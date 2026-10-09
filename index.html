@@ -937,28 +937,55 @@ let moves = [], state = null, sel = -1, gameId = 0;
 /* ---------------- trash talk ---------------- */
 const TALK = {
   pick: ["선공이든 후공이든 골라. 결과는 같으니까.", "어느 쪽 할래? 어느 쪽이 질지는 이미 알지만.",
-         "안에 사람 숨어 있는 거 아니야. 이번 튀르크는 진짜 기계거든."],
-  startHumanBlack: ["먼저 둬. 핸디캡이라고 생각해.", "선공 줄게. 그 정도는 해줘야 재밌지.", "천천히 둬. 나는 5초면 돼."],
-  startEngineBlack: ["내가 먼저 간다. 따라올 수 있으면 따라와.", "선공은 내가 할게. 너한테 줘봤자 아까워서."],
+         "안에 사람 숨어 있는 거 아니야. 이번 튀르크는 진짜 기계거든.", "흑 할래, 백 할래? 고민하는 시간도 아깝다.",
+         "준비됐으면 골라. 나는 1770년부터 준비돼 있었어."],
+  startHumanBlack: ["먼저 둬. 핸디캡이라고 생각해.", "선공 줄게. 그 정도는 해줘야 재밌지.", "천천히 둬. 나는 5초면 돼.",
+                    "첫 수부터 실수하지 마. 재미없어지니까.", "선공이 유리하대. 너한테는 별 상관 없겠지만."],
+  startEngineBlack: ["내가 먼저 간다. 따라올 수 있으면 따라와.", "선공은 내가 할게. 너한테 줘봤자 아까워서.",
+                     "후공 골랐네. 지는 데 시간 좀 더 걸리겠다.", "좋아, 첫 수는 서비스로 빨리 둬줄게."],
+  rematch: ["또 왔네. 지금 나 {w}승, 너 {l}승.", "한 판 더? 스코어 {w}:{l}. 앞이 나야.", "복수하러 왔구나. 현재 나 {w}, 너 {l}."],
+  streak: ["{k}연승 중이야. 늘려줘서 고마워.", "{k}연승. 오늘 컨디션 좋네, 나.", "{k}연승째 도전. 응원해줘서 고마워."],
   normal: ["음, 예상대로네.", "네 다음 수도 이미 읽어놨어.", "{depth}수 앞까지 봤는데 네가 이기는 길은 없더라.",
-           "국면 {nodes} 개 봤어. 너는 몇 개 봤어?", "지금 몇 수 앞 보고 있어? 나는 {depth}수.", "그 정도는 5초도 안 걸려."],
-  blunder: ["그 수 진심이야?", "고마워. 방금 그거 선물 맞지?", "와, 그건 나도 생각 못 했다. 너무 나빠서.", "한 번만 못 본 걸로 해줄게. 아, 무르기가 없네."],
-  engineCap: ["냠.", "그 말은 내가 가져갈게.", "잡았다. 원래 잘 안 잡는데 너무 무방비라서.", "자리 비켜. 거기 내 자리야."],
-  humanCap: ["잡아줘서 고마워. 말이 줄면 잇기 더 쉬워지거든.", "LOA에서 잡는 게 좋은 수인 줄 알았지?", "하나 줄었네. 덕분에 덜 걸어도 되겠다."],
-  winning: ["슬슬 항복 버튼 찾아봐. 아, 없지.", "내 계산으로 내 승률 {p}%. 반올림하면 100.", "이제 몇 수 남았는지 세는 중이야."],
-  mate: ["{n}수 안에 끝나. 미리 말해주는 거야.", "체크메이트 말고 커넥트메이트. {n}수 남았어.", "뭘 둬도 {n}수야. 편하게 둬."],
-  mateCount: ["{n}수 남았다.", "카운트다운 {n}.", "이제 {n}수."],
-  doomed: ["잠깐, 이거 내가 지는 수순인데?", "계산이 틀렸을 거야. 아마도."],
-  slow: ["자는 거 아니지?", "오래 생각한다고 답이 바뀌진 않아.", "그동안 나도 계속 읽고 있었어. 미리 생각 켜져 있거든."],
+           "국면 {nodes} 개 봤어. 너는 몇 개 봤어?", "지금 몇 수 앞 보고 있어? 나는 {depth}수.", "그 정도는 5초도 안 걸려.",
+           "흥미롭네. 아니, 사실 별로.", "방금 그 수, 내 후보 목록엔 없었어. 좋은 뜻 아니야.",
+           "이 판 기보는 교재로 써도 되겠다. 반면교사로.", "계속 그렇게 둬. 나 편하게."],
+  blunder: ["그 수 진심이야?", "고마워. 방금 그거 선물 맞지?", "와, 그건 나도 생각 못 했다. 너무 나빠서.",
+            "한 번만 못 본 걸로 해줄게. 아, 무르기가 없네.", "방금 내 승률이 {d}%p 올랐어.",
+            "손이 미끄러진 거지? 그렇다고 해줄게.", "그거 함정이야? 함정이면 너무 티 나고, 아니면 더 슬프다."],
+  goodMove: ["오, 그건 좀 괜찮네.", "인정할 건 인정하지. 좋은 수야.", "어디서 배웠어? 아무튼 거기까지야.", "잠깐 긴장했어. 잠깐."],
+  engineCap: ["냠.", "그 말은 내가 가져갈게.", "잡았다. 원래 잘 안 잡는데 너무 무방비라서.", "자리 비켜. 거기 내 자리야.",
+              "하나 줄었네. 네 말이.", "통행료 받아 간다."],
+  humanCap: ["잡아줘서 고마워. 말이 줄면 잇기 더 쉬워지거든.", "LOA에서 잡는 게 좋은 수인 줄 알았지?",
+             "하나 줄었네. 덕분에 덜 걸어도 되겠다.", "아야. 거짓말이고, 오히려 좋아.", "잡는 맛은 있지? 그게 다야."],
+  humanNear: ["덩어리 두 개 남았네. 거기서부터가 어렵지.", "거의 다 왔다고 생각하지? 마지막 한 칸이 제일 멀어."],
+  engineNear: ["나 이제 두 덩어리. 슬슬 끝낼게.", "거의 다 이었다. 막을 거면 지금 막아."],
+  winning: ["슬슬 항복 버튼 찾아봐. 아, 없지.", "내 계산으로 내 승률 {p}%. 반올림하면 100.", "이제 몇 수 남았는지 세는 중이야.",
+            "여기서 뒤집으면 내가 기계 그만둔다."],
+  mate: ["{n}수 안에 끝나. 미리 말해주는 거야.", "체크메이트 말고 커넥트메이트. {n}수 남았어.", "뭘 둬도 {n}수야. 편하게 둬.",
+         "스포일러: {n}수 뒤에 내가 이겨."],
+  mateCount: ["{n}수 남았다.", "카운트다운 {n}.", "이제 {n}수.", "{n}. 숫자 세는 거 들려?"],
+  doomed: ["잠깐, 이거 내가 지는 수순인데?", "계산이 틀렸을 거야. 아마도.", "어... 다시 계산해 볼게. 계속 같은 답이 나오네.",
+           "이건 테스트 모드야. 진짜 실력 아니야."],
+  slow: ["자는 거 아니지?", "오래 생각한다고 답이 바뀌진 않아.", "그동안 나도 계속 읽고 있었어. 미리 생각 켜져 있거든.",
+         "체스 시계 있었으면 넌 벌써 졌어.", "천천히 해. 어차피 결과는 같아."],
+  fast: ["생각은 하고 둔 거지?", "빠르네. 좋은 쪽으로 빠른지는 모르겠다.", "급할 거 없어. 지는 건 안 도망가."],
+  longGame: ["아직도 하고 있어? 끈기는 인정.", "이렇게 오래 버틴 사람 오랜만이야. 그래도 결과는 같아."],
   engineWin: ["{n}수 만에 끝. 생각보다 빨랐네.", "나는 다 이었는데 너는 아직 {g}덩어리네.", "GG. 다음엔 좀 버텨봐.",
-              "이게 최선이었어? 진짜로?", "5초씩 생각해줬는데 그것도 아깝다.", "연습 상대 필요하면 말해. 아, 방금 했구나."],
-  engineWin2: ["새 게임 버튼은 아래 있어. 결과는 같겠지만.", "한 판 더? 겁나면 안 해도 돼.", "기보 저장해 둬. 지는 법 교재로 쓰게.", "괜찮아. 사람이 원래 그래.", "나폴레옹도 졌어. 너무 기죽지 마."],
-  humanWin: ["...방금 건 버그야. 새 게임 눌러.", "봐준 거야. 진짜로.", "인정. 근데 다음 판은 진심으로 한다."],
-  draw: ["무승부. 비긴 걸 이긴 걸로 치고 싶겠지.", "오늘은 여기까지 봐줄게."],
-  enginePass: ["둘 데가 없네. 이번만 넘길게."],
-  humanPass: ["둘 수가 없어? 그럼 내 차례."],
+              "이게 최선이었어? 진짜로?", "5초씩 생각해줬는데 그것도 아깝다.", "연습 상대 필요하면 말해. 아, 방금 했구나.",
+              "켐펠렌이 봤으면 울었겠다. 기뻐서.", "또 하나의 승리. 지루할 정도야."],
+  engineWin2: ["새 게임 버튼은 아래 있어. 결과는 같겠지만.", "한 판 더? 겁나면 안 해도 돼.", "기보 저장해 둬. 지는 법 교재로 쓰게.",
+               "괜찮아. 사람이 원래 그래.", "나폴레옹도 졌어. 너무 기죽지 마.", "다음 판엔 세 수 더 버티는 걸 목표로 해봐."],
+  humanWin: ["...방금 건 버그야. 새 게임 눌러.", "봐준 거야. 진짜로.", "인정. 근데 다음 판은 진심으로 한다.",
+             "배터리가 부족했어. 그래서 그래.", "이건 기록에 안 남는 연습 경기였어.", "상자 안에 사람 숨겨놨지? 나 다 알아."],
+  humanWin2: ["...한 판 더 해. 이번엔 진짜야.", "스크린샷 찍었으면 지워줘.", "이 얘기 아무한테도 하지 마."],
+  draw: ["무승부. 비긴 걸 이긴 걸로 치고 싶겠지.", "오늘은 여기까지 봐줄게.",
+         "비겼네. 나한테는 진 거나 마찬가지고, 너한테는 이긴 거나 마찬가지지?"],
+  enginePass: ["둘 데가 없네. 이번만 넘길게.", "패스. 전략이야. 그런 걸로 해."],
+  humanPass: ["둘 수가 없어? 그럼 내 차례.", "막혔네. 내가 막은 거야."],
 };
 let recent = [], slowTimer = 0, winTimer = 0, prevP = null, mateSaid = false, leadSaid = false, doomSaid = false;
+let humanNearSaid = false, engineNearSaid = false, longSaid = false, turnStart = 0;
+let games = 0, turkWins = 0, humanWins = 0, streak = 0; // this visit only
 const WIN = R.WIN, MATE = R.MATE_BOUND;
 function say(key, vars) {
   const fresh = TALK[key].filter((x) => !recent.includes(x)); // don't repeat anything said in the last few lines
@@ -973,13 +1000,19 @@ const man = (n) => (n >= 10000 ? Math.round(n / 10000) + "만" : String(n));
 function endTalk() {
   clearTimeout(slowTimer);
   const st = state;
-  if (!st.winner) { say("draw"); return; }
-  if (st.winner === human) { say("humanWin"); return; }
-  // the engine won: rub it in, with real numbers from the final position
-  say("engineWin", { n: Math.ceil(moves.length / 2), g: R._label(human) });
+  games++;
+  if (!st.winner) { streak = 0; say("draw"); return; }
+  let follow;
+  if (st.winner === human) { humanWins++; streak = 0; say("humanWin"); follow = "humanWin2"; }
+  else {
+    turkWins++; streak++;
+    // rub it in, with real numbers from the final position
+    say("engineWin", { n: Math.ceil(moves.length / 2), g: R._label(human) });
+    follow = "engineWin2";
+  }
   const g = gameId;
   clearTimeout(winTimer);
-  winTimer = setTimeout(() => { if (g === gameId && state.over) say("engineWin2"); }, 3500);
+  winTimer = setTimeout(() => { if (g === gameId && state.over) say(follow); }, 3500);
 }
 // after the engine's move; info.score is from the engine's side before it moved
 function engineTalk(m, info) {
@@ -992,20 +1025,27 @@ function engineTalk(m, info) {
   }
   if (sc <= -MATE) { if (!doomSaid) { doomSaid = true; say("doomed"); } prevP = 0; return; }
   const p = 1 / (1 + Math.exp(-sc / 300));
-  if (prevP !== null && p - prevP > 0.15 && p > 0.6) say("blunder");
+  const swing = prevP === null ? 0 : p - prevP; // how much the human's last move changed my winning chances
+  if (swing > 0.15 && p > 0.6) say("blunder", { d: Math.round(swing * 100) });
+  else if (swing <= -0.1 && Math.random() < 0.7) say("goodMove");
   else if (m & 4096) say("engineCap");
+  else if (!engineNearSaid && R._label(3 - human) === 2) { engineNearSaid = true; say("engineNear"); }
   else if (p > 0.85 && !leadSaid) { leadSaid = true; say("winning", { p: Math.round(p * 100) }); }
   else if (info.depth >= 3 && Math.random() < 0.35) say("normal", { depth: info.depth, nodes: man(info.nodes) });
   prevP = p;
 }
-function humanTalk(m) {
+function humanTalk(m, elapsed) {
   clearTimeout(slowTimer);
   if (state.over) { endTalk(); return; }
   if (m === PASS) say("humanPass");
   else if (m & 4096) say("humanCap");
+  else if (!humanNearSaid && R._label(human) === 2) { humanNearSaid = true; say("humanNear"); }
+  else if (elapsed < 1500 && Math.random() < 0.3) say("fast");
+  else if (!longSaid && moves.length >= 60) { longSaid = true; say("longGame"); }
 }
 function armSlowTimer() {
   clearTimeout(slowTimer);
+  turnStart = Date.now();
   const ply = moves.length, g = gameId;
   slowTimer = setTimeout(() => { if (g === gameId && moves.length === ply && started && !state.over && state.stm === human) say("slow"); }, 40000);
 }
@@ -1118,9 +1158,12 @@ function start(side) {
   gameId++;
   human = side; started = true; moves = []; sel = -1;
   prevP = null; mateSaid = leadSaid = doomSaid = false;
+  humanNearSaid = engineNearSaid = longSaid = false;
   clearTimeout(winTimer);
   state = replay();
-  say(side === 1 ? "startHumanBlack" : "startEngineBlack");
+  if (games > 0 && streak >= 2 && Math.random() < 0.7) say("streak", { k: streak });
+  else if (games > 0 && Math.random() < 0.6) say("rematch", { w: turkWins, l: humanWins });
+  else say(side === 1 ? "startHumanBlack" : "startEngineBlack");
   if (side === 1) armSlowTimer();
   document.getElementById("pick").hidden = true;
   document.getElementById("btn-new").hidden = false;
@@ -1132,7 +1175,7 @@ function onSquare(s) {
   if (!started || state.over || state.stm !== human) return;
   if (sel >= 0) {
     const m = state.legal.find((x) => (x & 63) === sel && ((x >> 6) & 63) === s);
-    if (m !== undefined) { commit(m); humanTalk(m); return; }
+    if (m !== undefined) { const el = Date.now() - turnStart; commit(m); humanTalk(m, el); return; }
     sel = state.b[s] === human && state.legal.some((x) => (x & 63) === s) ? s : -1;
     render(); return;
   }
