@@ -65,7 +65,7 @@ h1 small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 
 .evalbar .mid { position: absolute; left: -2px; right: -2px; top: 50%; height: 2px; background: var(--accent); opacity: .7; }
 .ranks { grid-row: 1; grid-column: 2; display: grid; grid-template-rows: repeat(8, 1fr); align-items: center; justify-items: center; font: 11px var(--mono); color: var(--muted); }
 .files { grid-row: 2; grid-column: 3; display: grid; grid-template-columns: repeat(8, 1fr); justify-items: center; font: 11px var(--mono); color: var(--muted); }
-.board { grid-row: 1; grid-column: 3; width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 12px 34px -18px rgba(0, 0, 0, .55); }
+.board { position: relative; grid-row: 1; grid-column: 3; width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 12px 34px -18px rgba(0, 0, 0, .55); }
 .board.thinking { box-shadow: 0 0 0 2px var(--accent), 0 12px 34px -18px rgba(0, 0, 0, .55); }
 @media (prefers-reduced-motion: no-preference) { .board.thinking { animation: think 1.4s ease-in-out infinite; } }
 @keyframes think { 50% { box-shadow: 0 0 0 2px transparent, 0 12px 34px -18px rgba(0, 0, 0, .55); } }
@@ -82,6 +82,7 @@ h1 small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 
 .dot { width: 26%; height: 26%; border-radius: 50%; background: var(--accent); opacity: .75; pointer-events: none; }
 .ring { position: absolute; inset: 7%; border-radius: 50%; border: 3px solid var(--accent); pointer-events: none; z-index: 2; }
 .hint { position: absolute; inset: 3px; border-radius: 50%; border: 3px solid var(--hc); pointer-events: none; z-index: 2; }
+.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; overflow: visible; }
 .rank { position: absolute; top: 2px; left: 2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--hc); color: #fff; font: 700 11px/18px var(--mono); text-align: center; pointer-events: none; z-index: 4; }
 @media (prefers-reduced-motion: no-preference) { .piece.moving { transition: transform .22s cubic-bezier(.2, .7, .2, 1); } }
 
@@ -1502,8 +1503,8 @@ const STUDY_TALK = {
   pzStart: ["{side} 차례. {n}수 안에 이어봐. 나는 막을 거야.", "{n}수 안에 끝나는 판이야. 찾아봐.", "정답은 딱 하나야. {n}수 안에."],
   pzSolved: ["...풀었네. 쉬운 문제였어.", "정답. 다음 건 이렇게 안 쉬워.", "인정. 근데 실전에선 내가 이런 기회 안 줘.", "풀었다고 우쭐하지 마. 내가 낸 문제야."],
   pzFail: ["땡. 다시 해봐.", "그 수로는 안 돼. 내가 막았잖아.", "{n}수 안에 못 이었어. 힌트 써도 돼. 조금 부끄럽지만."],
-  pzHint: ["힌트: 테두리 친 말을 움직여.", "이 말이야. 어디로 갈지는 네가 찾아.", "이 말. 더는 안 알려줘."],
-  pzHint2: ["여기까지 알려주면 거의 답이지. 점선 말을 실선 칸으로.", "이건 거의 정답 공개야."],
+  pzHint: ["힌트: 점선 테두리 친 말을 움직여.", "이 말이야. 어디로 갈지는 네가 찾아.", "이 말. 더는 안 알려줘."],
+  pzHint2: ["여기까지 알려주면 거의 답이지. 화살표대로 둬.", "이건 거의 정답 공개야."],
   pzAllDone: ["이 단계 다 풀었네. 다음 단계 가봐. 거기선 안 봐줘."],
 };
 Object.assign(TALK, STUDY_TALK);
@@ -1589,19 +1590,39 @@ for (let s = 0; s < 64; s++) {
   el.addEventListener("click", () => current().onSquare(s));
   boardEl.appendChild(el); sqEls.push(el);
 }
-// view: { st, sel, selectable(side), hints: [{move, rank}], fromOnly: [sq], toOnly: [sq], thinking }
+// recommended moves as translucent arrows (rank 1 on top, thickest)
+const SVGNS = "http://www.w3.org/2000/svg";
+const arrowLayer = document.createElementNS(SVGNS, "svg");
+arrowLayer.setAttribute("class", "arrows"); arrowLayer.setAttribute("viewBox", "0 0 8 8"); arrowLayer.setAttribute("aria-hidden", "true");
+document.getElementById("board").appendChild(arrowLayer);
+function arrowSVG(m, rank) {
+  const f = m & 63, t = (m >> 6) & 63;
+  const x1 = (f & 7) + 0.5, y1 = (f >> 3) + 0.5, x2 = (t & 7) + 0.5, y2 = (t >> 3) + 0.5;
+  const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len, px = -uy, py = ux;
+  const top = rank === 1, w = top ? 0.2 : 0.15, head = top ? 0.42 : 0.36, hw = top ? 0.3 : 0.25;
+  const sx = x1 + ux * 0.2, sy = y1 + uy * 0.2, ex = x2 - ux * 0.1, ey = y2 - uy * 0.1;
+  const bx = ex - ux * head, by = ey - uy * head, f2 = (n) => n.toFixed(3);
+  const col = HC[rank - 1];
+  return `<g style="opacity:${top ? 0.62 : 0.45};fill:${col};stroke:${col}">` +
+    `<line x1="${f2(sx)}" y1="${f2(sy)}" x2="${f2(bx)}" y2="${f2(by)}" stroke-width="${w}" stroke-linecap="round"/>` +
+    `<polygon points="${f2(ex)},${f2(ey)} ${f2(bx + px * hw)},${f2(by + py * hw)} ${f2(bx - px * hw)},${f2(by - py * hw)}" stroke="none"/></g>`;
+}
+function drawArrows(hints) {
+  const key = hints.map((h) => h.move + ":" + h.rank).join(",");
+  if (arrowLayer.dataset.k === key) return;
+  arrowLayer.dataset.k = key;
+  arrowLayer.innerHTML = hints.filter((h) => h.move !== PASS && (h.move & 63) !== ((h.move >> 6) & 63))
+    .sort((a, b) => b.rank - a.rank).map((h) => arrowSVG(h.move, h.rank)).join("");
+}
+// view: { st, sel, hints: [{move, rank}] (drawn as arrows), fromOnly: [sq] (dashed ring), thinking }
 function drawBoard(v, animMove) {
   const st = v.st, targets = new Map();
   if (v.sel >= 0) for (const m of st.legal) if ((m & 63) === v.sel) targets.set((m >> 6) & 63, (m & 4096) !== 0);
   const real = st.last >= 0 && st.last !== PASS;
   const lf = real ? st.last & 63 : -1, lt = real ? (st.last >> 6) & 63 : -1;
-  const hintFrom = new Map(), hintTo = new Map();
-  for (const h of v.hints || []) {
-    if (!hintFrom.has(h.move & 63)) hintFrom.set(h.move & 63, h.rank);
-    if (!hintTo.has((h.move >> 6) & 63)) hintTo.set((h.move >> 6) & 63, h.rank);
-  }
+  const hintFrom = new Map();
   for (const s of v.fromOnly || []) hintFrom.set(s, 1);
-  for (const s of v.toOnly || []) hintTo.set(s, 1);
+  drawArrows(v.hints || []);
   for (let s = 0; s < 64; s++) {
     const el = sqEls[s], p = st.b[s];
     el.classList.toggle("last", s === lf || s === lt);
@@ -1611,9 +1632,8 @@ function drawBoard(v, animMove) {
     if (hintFrom.has(s)) el.style.setProperty("--hc", HC[hintFrom.get(s) - 1]); else el.style.removeProperty("--hc");
     let h = p ? `<span class="piece ${p === 1 ? "b" : "w"}"></span>` : "";
     if (targets.has(s)) h += targets.get(s) ? `<span class="ring"></span>` : `<span class="dot"></span>`;
-    if (hintTo.has(s)) { const r = hintTo.get(s); h += `<span class="hint" style="--hc:${HC[r - 1]}"></span><span class="rank" style="--hc:${HC[r - 1]}">${(v.fromOnly || v.toOnly) ? "!" : r}</span>`; }
     if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
-    el.setAttribute("aria-label", sqName(s) + (p ? " " + sideName(p) : " 빈칸") + (targets.has(s) ? ", 이동 가능" : "") + (hintTo.has(s) ? ", 추천 칸" : ""));
+    el.setAttribute("aria-label", sqName(s) + (p ? " " + sideName(p) : " 빈칸") + (targets.has(s) ? ", 이동 가능" : ""));
   }
   boardEl.classList.toggle("thinking", !!v.thinking);
   if (animMove >= 0 && animMove !== PASS && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1983,9 +2003,10 @@ const pz = {
   },
   drawBoard(anim) {
     const st = this.st();
-    const fromOnly = this.hint >= 1 && this.hintMove >= 0 && this.hintMove !== undefined ? [this.hintMove & 63] : [];
-    const toOnly = this.hint >= 2 ? [(this.hintMove >> 6) & 63] : [];
-    drawBoard({ st, sel: this.sel, fromOnly, toOnly, thinking: this.busy }, anim);
+    const has = this.hint >= 1 && this.hintMove >= 0;
+    const fromOnly = has && this.hint === 1 ? [this.hintMove & 63] : [];
+    const hints = has && this.hint >= 2 ? [{ move: this.hintMove, rank: 1 }] : [];
+    drawBoard({ st, sel: this.sel, fromOnly, hints, thinking: this.busy }, anim);
   },
   render(anim) {
     const p = this.cur(), st = this.st();
