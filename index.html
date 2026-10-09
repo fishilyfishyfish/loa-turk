@@ -59,6 +59,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); }
 .bubble { position: relative; max-width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 9px 14px; font-size: 15px; font-weight: 500; line-height: 1.45; box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .5); }
 .bubble::after { content: ""; position: absolute; left: 24px; bottom: -7px; width: 12px; height: 12px; background: var(--surface); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
 .bubble .who { font-size: 12px; font-weight: 600; color: var(--muted); margin-right: 8px; letter-spacing: .04em; }
+.bubble a { color: var(--accent); font-weight: 700; }
 @media (prefers-reduced-motion: no-preference) {
   .bubble.pop { animation: pop .28s cubic-bezier(.2, .9, .3, 1.3); }
 }
@@ -1239,6 +1240,11 @@ const TALK = {
     "에베레스트 꼭대기에선 물이 70도 정도에서 끓어.",
     "깨진 컵은 저절로 안 붙어. 엔트로피 때문이야. 네가 진 판도 저절로 안 뒤집히고.",
   ],
+  eggStudy: [
+    "네 귀퉁이를 다 찍었네. 비밀 통로야. 학습판으로 보내줄게.",
+    "들켰네. 공부하러 가자. 거기서도 내가 가르쳐.",
+    "비밀 통로 찾았네. 학습판에서 기다릴게.",
+  ],
 };
 let recent = [], slowTimer = 0, chatTimer = 0, winTimer = 0, prevP = null, mateSaid = false, leadSaid = false, doomSaid = false;
 let humanNearSaid = false, engineNearSaid = false, longSaid = false, turnStart = 0;
@@ -1461,8 +1467,28 @@ for (let s = 0; s < 64; s++) {
   el.type = "button";
   el.className = "sq" + (((s >> 3) + (s & 7)) % 2 ? " dk" : "");
   el.id = "sq-" + sqName(s);
-  el.addEventListener("click", () => onSquare(s));
+  el.addEventListener("click", () => { eggTap(s); onSquare(s); });
   boardEl.appendChild(el); sqEls.push(el);
+}
+// easter egg: tap the four corners clockwise (a8, h8, h1, a1) to open the study page
+const STUDY_URL = /github\.io$/.test(location.hostname) ? "study.html" : "https://fishilyfishyfish.github.io/loa-turk/study.html";
+const EGG = [0, 7, 63, 56];
+let eggPos = 0, eggAt = 0;
+function eggTap(s) {
+  const now = Date.now();
+  if (now - eggAt > 3000) eggPos = 0;
+  eggAt = now;
+  eggPos = s === EGG[eggPos] ? eggPos + 1 : s === EGG[0] ? 1 : 0;
+  if (eggPos < EGG.length) return;
+  eggPos = 0;
+  say("eggStudy");
+  if (STUDY_URL === "study.html") { setTimeout(() => { location.href = STUDY_URL; }, 1200); return; }
+  let w = null;
+  try { w = window.open(STUDY_URL, "_blank"); } catch (e) { w = null; }
+  if (w) { try { w.opener = null; } catch (e) {} return; }
+  const a = document.createElement("a"); // pop-ups blocked: leave a link in the bubble
+  a.href = STUDY_URL; a.target = "_blank"; a.rel = "noopener"; a.textContent = "학습판 열기";
+  document.getElementById("say-text").append(" ", a);
 }
 function render(animFrom, animTo) {
   const st = state;
