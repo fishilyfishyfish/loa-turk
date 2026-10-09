@@ -3,86 +3,256 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>LOA 튀르크</title>
+<title>튀르크 학습판</title>
 <style>
-/* Layout: the engine's speech bubble, the board, and the side picker or one button, stacked in the middle */
+/* Layout: mode tabs and Turk's bubble on top; board with an evaluation bar on the left, the coaching panel on the right */
 :root {
   --bg: #e8ebe5;
-  --ink: #16191b;
-  --line: #c6ccc3;
   --surface: #f7f8f4;
+  --ink: #16191b;
   --muted: #5a625d;
+  --line: #c6ccc3;
   --sq-light: #d5d9cf;
   --sq-dark: #98a395;
   --accent: #2346c8;
   --accent-soft: rgba(35, 70, 200, .16);
   --on-accent: #ffffff;
   --win: #1d8656;
+  --g-best: #1d8656; --g-good: #5b9a33; --g-ok: #7d847c; --g-dubious: #b98a10; --g-mistake: #cf6a17; --g-blunder: #c33a2a;
   --black-piece: #1b1f22;
   --black-edge: #000;
   --white-piece: #fbfbf7;
   --white-edge: #8c938b;
   --font: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #111413; --ink: #e6eae5; --line: #2d3430; --surface: #1c211f; --muted: #8f9890;
+    --bg: #111413; --surface: #1c211f; --ink: #e6eae5; --muted: #8f9890; --line: #2d3430;
     --sq-light: #586257; --sq-dark: #3a423b; --accent: #7d9bff; --accent-soft: rgba(125, 155, 255, .22);
-    --on-accent: #0c1433; --win: #4cc48c; --black-piece: #0b0d0e; --black-edge: #000;
-    --white-piece: #eef0ea; --white-edge: #9aa298; color-scheme: dark;
+    --on-accent: #0c1433; --win: #4cc48c;
+    --g-best: #4cc48c; --g-good: #8cc85f; --g-ok: #9aa298; --g-dubious: #e0b53c; --g-mistake: #f08d45; --g-blunder: #ef6a59;
+    --black-piece: #0b0d0e; --black-edge: #000; --white-piece: #eef0ea; --white-edge: #9aa298; color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--ink); font-family: var(--font); }
-.stage { --size: min(92vw, calc(100vh - 190px), 640px); min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
-.board { width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 12px 34px -18px rgba(0, 0, 0, .55); transition: box-shadow .3s; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.5; }
+.app { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+h1 small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+.tabs button { font: inherit; font-weight: 600; border: 0; background: transparent; color: var(--muted); padding: 7px 16px; border-radius: 999px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.tabs button:focus-visible, .btn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.say { min-height: 52px; display: flex; align-items: flex-end; }
+.bubble { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 9px 14px; font-weight: 500; line-height: 1.45; box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .5); max-width: 100%; }
+.bubble::after { content: ""; position: absolute; left: 24px; bottom: -7px; width: 12px; height: 12px; background: var(--surface); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
+.bubble .who { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 8px; letter-spacing: .04em; }
+@media (prefers-reduced-motion: no-preference) { .bubble.pop { animation: pop .28s cubic-bezier(.2, .9, .3, 1.3); } }
+@keyframes pop { from { transform: translateY(6px) scale(.96); opacity: .3; } }
+
+.play { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .play { grid-template-columns: minmax(0, 1fr); } }
+.board-area { --size: min(calc(100vw - 32px - 44px), 560px, calc(100vh - 210px)); display: grid; grid-template-columns: 14px 16px var(--size); grid-template-rows: var(--size) 16px; gap: 4px; justify-content: center; }
+@media (max-width: 900px) { .board-area { --size: min(calc(100vw - 32px - 44px), 560px); } }
+.evalbar { grid-row: 1; grid-column: 1; position: relative; border-radius: 4px; overflow: hidden; background: var(--white-piece); box-shadow: inset 0 0 0 1px var(--line); }
+.evalbar .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 50%; background: var(--black-piece); transition: height .4s ease; }
+.evalbar .mid { position: absolute; left: -2px; right: -2px; top: 50%; height: 2px; background: var(--accent); opacity: .7; }
+.ranks { grid-row: 1; grid-column: 2; display: grid; grid-template-rows: repeat(8, 1fr); align-items: center; justify-items: center; font: 11px var(--mono); color: var(--muted); }
+.files { grid-row: 2; grid-column: 3; display: grid; grid-template-columns: repeat(8, 1fr); justify-items: center; font: 11px var(--mono); color: var(--muted); }
+.board { grid-row: 1; grid-column: 3; width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 12px 34px -18px rgba(0, 0, 0, .55); }
 .board.thinking { box-shadow: 0 0 0 2px var(--accent), 0 12px 34px -18px rgba(0, 0, 0, .55); }
 @media (prefers-reduced-motion: no-preference) { .board.thinking { animation: think 1.4s ease-in-out infinite; } }
 @keyframes think { 50% { box-shadow: 0 0 0 2px transparent, 0 12px 34px -18px rgba(0, 0, 0, .55); } }
 .sq { position: relative; border: 0; padding: 0; margin: 0; background: var(--sq-light); cursor: pointer; display: grid; place-items: center; }
 .sq.dk { background: var(--sq-dark); }
-.sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 2; }
+.sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
 .sq.last::after { content: ""; position: absolute; inset: 0; background: var(--accent-soft); pointer-events: none; }
 .sq.sel::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 3px var(--accent); pointer-events: none; }
-.piece { width: 76%; height: 76%; border-radius: 50%; pointer-events: none; position: relative; z-index: 1; transition: opacity .3s; }
+.sq.hfrom::before { content: ""; position: absolute; inset: 4px; border: 2px dashed var(--hc, var(--accent)); border-radius: 50%; pointer-events: none; z-index: 2; }
+.piece { width: 76%; height: 76%; border-radius: 50%; pointer-events: none; position: relative; z-index: 1; }
 .piece.b { background: radial-gradient(circle at 35% 30%, #4a5157 0%, var(--black-piece) 62%); box-shadow: 0 0 0 1px var(--black-edge), 0 3px 6px -2px rgba(0, 0, 0, .6); }
 .piece.w { background: radial-gradient(circle at 35% 30%, #ffffff 0%, var(--white-piece) 60%, #d9ddd5 100%); box-shadow: 0 0 0 1px var(--white-edge), 0 3px 6px -2px rgba(0, 0, 0, .45); }
 .sq.won .piece { box-shadow: 0 0 0 3px var(--win), 0 0 16px 3px var(--win); }
-.board.drawn .piece { opacity: .45; }
 .dot { width: 26%; height: 26%; border-radius: 50%; background: var(--accent); opacity: .75; pointer-events: none; }
 .ring { position: absolute; inset: 7%; border-radius: 50%; border: 3px solid var(--accent); pointer-events: none; z-index: 2; }
+.hint { position: absolute; inset: 3px; border-radius: 50%; border: 3px solid var(--hc); pointer-events: none; z-index: 2; }
+.rank { position: absolute; top: 2px; left: 2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--hc); color: #fff; font: 700 11px/18px var(--mono); text-align: center; pointer-events: none; z-index: 4; }
 @media (prefers-reduced-motion: no-preference) { .piece.moving { transition: transform .22s cubic-bezier(.2, .7, .2, 1); } }
-.say { width: var(--size); max-width: 100%; min-height: 58px; display: flex; align-items: flex-end; }
-.bubble { position: relative; max-width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 9px 14px; font-size: 15px; font-weight: 500; line-height: 1.45; box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .5); }
-.bubble::after { content: ""; position: absolute; left: 24px; bottom: -7px; width: 12px; height: 12px; background: var(--surface); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
-.bubble .who { font-size: 12px; font-weight: 600; color: var(--muted); margin-right: 8px; letter-spacing: .04em; }
-@media (prefers-reduced-motion: no-preference) {
-  .bubble.pop { animation: pop .28s cubic-bezier(.2, .9, .3, 1.3); }
-}
-@keyframes pop { from { transform: translateY(6px) scale(.96); opacity: .3; } }
-.controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; min-height: 48px; }
-.btn { font: inherit; font-size: 16px; font-weight: 600; border: 0; border-radius: 8px; padding: 12px 22px; background: var(--accent); color: var(--on-accent); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
-.btn:hover { filter: brightness(1.1); }
-.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.btn .chip { width: 14px; height: 14px; border-radius: 50%; }
-.chip.b { background: var(--black-piece); box-shadow: 0 0 0 1px var(--on-accent); }
+
+.panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.label { font-size: 12px; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { font: inherit; font-size: 14px; font-weight: 600; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 8px 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color: var(--on-accent); filter: brightness(1.1); }
+.btn.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.chip.b { background: var(--black-piece); box-shadow: 0 0 0 1px var(--black-edge); }
 .chip.w { background: var(--white-piece); box-shadow: 0 0 0 1px var(--white-edge); }
+.seg { display: inline-flex; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--muted); border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.status { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.note { font-size: 13px; color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.grade { border-left: 4px solid var(--gc, var(--line)); padding-left: 10px; display: flex; flex-direction: column; gap: 3px; }
+.grade b { color: var(--gc); }
+.lines { display: flex; flex-direction: column; gap: 8px; }
+.line { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: var(--bg); text-align: left; font: inherit; color: inherit; }
+.line:hover { border-color: var(--accent); }
+.line .head { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.line .badge { min-width: 20px; height: 20px; border-radius: 10px; background: var(--hc); color: #fff; font: 700 12px/20px var(--mono); text-align: center; }
+.line .pct { margin-left: auto; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.line ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.line .pv { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.moves { font-family: var(--mono); font-size: 13px; max-height: 200px; overflow: auto; display: grid; grid-template-columns: 3.2ch minmax(0, 1fr) minmax(0, 1fr); gap: 2px 8px; font-variant-numeric: tabular-nums; }
+.moves .n { color: var(--muted); text-align: right; }
+.moves .mv { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; padding: 1px 4px; border-radius: 4px; display: flex; align-items: center; gap: 5px; }
+.moves button.mv { cursor: pointer; }
+.moves button.mv:hover { background: var(--accent-soft); }
+.moves .mv.cur { background: var(--accent); color: var(--on-accent); }
+.gdot { width: 9px; height: 9px; border-radius: 50%; background: var(--gc); flex-shrink: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.banner { border-radius: 8px; padding: 10px 12px; background: var(--accent-soft); font-weight: 600; }
+.banner.ok { background: color-mix(in srgb, var(--win) 18%, transparent); }
+.banner.bad { background: color-mix(in srgb, var(--g-blunder) 16%, transparent); }
+.progress { display: flex; flex-wrap: wrap; gap: 4px; }
+.progress button { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); font: 600 11px var(--mono); cursor: pointer; padding: 0; }
+.progress button.done { background: var(--win); border-color: var(--win); color: #fff; }
+.progress button.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+details summary { cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
-<main class="stage">
-  <div class="say" aria-live="polite"><div class="bubble" id="bubble"><span class="who">튀르크</span><span id="say-text"></span></div></div>
-  <div class="board" id="board" role="grid" aria-label="LOA 판"></div>
-  <div class="controls">
-    <div class="controls" id="pick">
-      <button type="button" class="btn" id="pick-1"><span class="chip b"></span>흑 · 선공</button>
-      <button type="button" class="btn" id="pick-2"><span class="chip w"></span>백 · 후공</button>
-    </div>
-    <button type="button" class="btn" id="btn-new" hidden>새 게임</button>
+<main class="app">
+  <div class="top">
+    <h1>튀르크 학습판<small>Lines of Action</small></h1>
+    <nav class="tabs" role="tablist" aria-label="모드">
+      <button type="button" role="tab" id="tab-game" aria-selected="true">대국</button>
+      <button type="button" role="tab" id="tab-ana" aria-selected="false">분석</button>
+      <button type="button" role="tab" id="tab-pz" aria-selected="false">퍼즐</button>
+    </nav>
   </div>
+  <div class="say" aria-live="polite"><div class="bubble" id="bubble"><span class="who">튀르크</span><span id="say-text"></span></div></div>
+
+  <section class="play">
+    <div class="board-area">
+      <div class="evalbar" title="흑 승률 (아래 검은 부분)"><div class="fill" id="eval-fill"></div><div class="mid"></div></div>
+      <div class="ranks" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+      <div class="board" id="board" role="grid" aria-label="LOA 판"></div>
+      <div class="files" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+    </div>
+
+    <aside class="panel">
+      <!-- ============ 대국 ============ -->
+      <div id="panel-game" class="panel">
+        <div class="card">
+          <div class="row" id="g-pick">
+            <button type="button" class="btn primary" id="g-pick-1"><span class="chip b"></span>흑 · 선공으로 시작</button>
+            <button type="button" class="btn primary" id="g-pick-2"><span class="chip w"></span>백 · 후공으로 시작</button>
+          </div>
+          <div class="row" id="g-controls" hidden>
+            <button type="button" class="btn" id="g-new">새 게임</button>
+            <button type="button" class="btn" id="g-undo">한 수 무르기</button>
+            <button type="button" class="btn" id="g-hint" aria-pressed="false">추천 수 보기</button>
+          </div>
+          <div class="row">
+            <span class="label">설명</span>
+            <div class="seg" id="seg-level"><button type="button" data-v="easy">쉽게</button><button type="button" data-v="short">짧게</button></div>
+          </div>
+          <div class="status" id="g-status"></div>
+          <div class="banner" id="g-banner" hidden></div>
+          <button type="button" class="btn" id="g-review" hidden>이 판 복기하기</button>
+        </div>
+        <div class="card" id="g-gradecard" hidden>
+          <div class="label">방금 내 수</div>
+          <div id="g-grade"></div>
+        </div>
+        <div class="card" id="g-hints" hidden>
+          <div class="label">튀르크의 추천 수 <span class="note" id="g-hints-depth"></span></div>
+          <div class="lines" id="g-lines"></div>
+        </div>
+        <div class="card">
+          <div class="label">기보</div>
+          <div class="moves" id="g-moves"></div>
+          <div class="legend" id="g-legend"></div>
+        </div>
+      </div>
+
+      <!-- ============ 분석 ============ -->
+      <div id="panel-ana" class="panel" hidden>
+        <div class="card">
+          <div class="row">
+            <button type="button" class="btn" id="a-first" title="처음">⏮</button>
+            <button type="button" class="btn" id="a-prev" title="한 수 뒤로">◀</button>
+            <button type="button" class="btn" id="a-next" title="한 수 앞으로">▶</button>
+            <button type="button" class="btn" id="a-last" title="마지막">⏭</button>
+            <button type="button" class="btn" id="a-best">1순위 두기</button>
+            <button type="button" class="btn" id="a-reset">빈 판에서 시작</button>
+          </div>
+          <div class="status" id="a-status"></div>
+          <div class="note">양쪽 수를 직접 둬. 기보의 수를 누르면 그 국면으로 가고, 거기서 다른 수를 두면 뒤 수순은 지워져.</div>
+        </div>
+        <div class="card">
+          <div class="label">좋은 수 3개 <span class="note" id="a-depth"></span></div>
+          <div class="lines" id="a-lines"></div>
+        </div>
+        <div class="card">
+          <div class="label">기보</div>
+          <div class="moves" id="a-moves"></div>
+          <div class="legend" id="a-legend"></div>
+        </div>
+      </div>
+
+      <!-- ============ 퍼즐 ============ -->
+      <div id="panel-pz" class="panel" hidden>
+        <div class="card">
+          <div class="row">
+            <span class="label">단계</span>
+            <div class="seg" id="seg-pz"><button type="button" data-v="1">1수</button><button type="button" data-v="2">2수</button><button type="button" data-v="3">3수</button></div>
+            <span class="note" id="pz-count"></span>
+          </div>
+          <div class="progress" id="pz-progress"></div>
+        </div>
+        <div class="card">
+          <div class="status" id="pz-prompt"></div>
+          <div class="note" id="pz-sub"></div>
+          <div class="row">
+            <button type="button" class="btn" id="pz-hint">힌트</button>
+            <button type="button" class="btn" id="pz-retry">다시 풀기</button>
+            <button type="button" class="btn primary" id="pz-next">다음 문제</button>
+          </div>
+          <div class="banner" id="pz-banner" hidden></div>
+        </div>
+        <details class="card">
+          <summary>퍼즐 규칙</summary>
+          <div class="note">정해진 수 안에 내 말을 전부 이으면 성공. 튀르크는 가장 오래 버티는 수로 막는다. 모든 문제는 전부 따져봐서 정답 첫 수가 딱 하나뿐인 것만 골랐다.</div>
+        </details>
+      </div>
+
+      <details class="card">
+        <summary>LOA 규칙</summary>
+        <ol class="note" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+          <li>흑은 위·아래 줄, 백은 왼쪽·오른쪽 줄에서 시작하고 흑이 먼저 둔다.</li>
+          <li>가로·세로·대각선으로 움직이고, 그 줄에 놓인 말 수(양쪽 다, 자기 포함)만큼 정확히 간다.</li>
+          <li>내 말은 뛰어넘고 상대 말은 못 넘는다. 상대 말 칸에 멈추면 잡는다.</li>
+          <li>내 말 전부가 8방향으로 맞닿아 한 덩어리가 되면 이긴다.</li>
+          <li>동시에 이어지면 무승부, 둘 수 없으면 패스, 같은 국면 세 번이면 무승부.</li>
+        </ol>
+      </details>
+    </aside>
+  </section>
 </main>
 
 <script>
@@ -1012,18 +1182,7 @@ function LoaEngine(opts) {
 </script>
 <script>
 const TUNED_WEIGHTS = {"WO": [89.737, 149.847, 185.339, 169.995, 194.812, 242.639, 255.31, 192.251, 226.532, 212.064, -35.407, 444.782, 26.218, -20.638, -8.095, -15.068, -1.352, 128.492, 0.0, 0.0, 0.0, 1.309, -24.138, -6.367], "WE": [-22.052, -73.962, 82.505, 124.591, 120.61, 174.463, 236.87, 329.321, 341.43, 397.136, -101.975, -123.728, -275.281, 49.802, 84.557, -45.242, -4.577, 304.686, 0.0, 0.0, 0.0, 25.145, 20.757, 12.19], "TEMPO_O": 56.233, "TEMPO_E": 205.451};
-</script>
-<script>
-"use strict";
-const THINK_MS = 5000, PONDER_MS = 700;
-let human = 1, started = false; // the game starts once a side is picked
-const R = LoaEngine({ ttBits: 8 });
-const PASS = R.PASS;
-const sqName = (s) => "abcdefgh"[s & 7] + (8 - (s >> 3));
-
-let moves = [], state = null, sel = -1, gameId = 0;
-
-/* ---------------- trash talk ---------------- */
+const PUZZLES = {"1":[{"id":"1-1","n":1,"side":2,"b":"0000100000000010010000000000112200202012000002210022000201010001","sol":[2786]},{"id":"1-2","n":1,"side":2,"b":"1000000100000000000022100000202022201000002220000002100200011100","sol":[2423]},{"id":"1-3","n":1,"side":2,"b":"0012210000200200012010100000201002210000002001000000000000010001","sol":[1692]},{"id":"1-4","n":1,"side":2,"b":"0000110000102200000011010100022000202000000220200001001001000000","sol":[1454]},{"id":"1-5","n":1,"side":2,"b":"0000010000020000022100002000200020202010200002000000120001001010","sol":[1762]},{"id":"1-6","n":1,"side":2,"b":"0000000000200200020022020012121000000201100020000000100000100100","sol":[1239]},{"id":"1-7","n":1,"side":2,"b":"0000100022022000210121012020000020001000010000000000010000000010","sol":[1178]},{"id":"1-8","n":1,"side":2,"b":"0001000000000022000200100020210000020212012101000000000110000000","sol":[1383]},{"id":"1-9","n":1,"side":1,"b":"0001010000000002000011120010010200001200020210000200002000000000","sol":[794]},{"id":"1-10","n":1,"side":1,"b":"0010010020001000000012120200000200000210000200100000000202000000","sol":[1858]},{"id":"1-11","n":1,"side":1,"b":"0100020000000200000100002010101020002000002002102000010000000200","sol":[2369]},{"id":"1-12","n":1,"side":2,"b":"0000000000000000000010020010120200020210000012120000200000001100","sol":[6563]},{"id":"1-13","n":1,"side":2,"b":"0000000000200000002020002001100011002000000200100000210000100110","sol":[5848]},{"id":"1-14","n":1,"side":1,"b":"0000000000000000122200000001000022011000002200000110100000000000","sol":[6864]},{"id":"1-15","n":1,"side":1,"b":"0000000000020000210020000200100000100000010212020020000000000200","sol":[2257]},{"id":"1-16","n":1,"side":1,"b":"0002000000002200000011100000201000200000000010100000002000100000","sol":[2426]},{"id":"1-17","n":1,"side":1,"b":"0000000000000000000000000000000002110000002102200022001000121000","sol":[7414]},{"id":"1-18","n":1,"side":1,"b":"0101100000000000000102000002000000002002000002100220000200000000","sol":[686]},{"id":"1-19","n":1,"side":1,"b":"0000000020000200000002100210020000001010200110000000100000000000","sol":[5978]},{"id":"1-20","n":1,"side":1,"b":"0000000000020100011002000011020000000000010100000020000000000200","sol":[2189]}],"2":[{"id":"2-1","n":2,"side":1,"b":"0101110000001100001000120010000000000002200200120022200000000202","sol":[652]},{"id":"2-2","n":2,"side":1,"b":"0021110000002200000200102020011020020001200201002000000000001000","sol":[4973]},{"id":"2-3","n":2,"side":1,"b":"0001000120000200210100001102022001011220021000000000000000000200","sol":[1799]},{"id":"2-4","n":2,"side":2,"b":"0000000002011020010010000020020001012020010200020000220000101100","sol":[1737]},{"id":"2-5","n":2,"side":2,"b":"0100100000000210000000000000112000202012000002210022000201010001","sol":[2786]},{"id":"2-6","n":2,"side":2,"b":"0000000010002000022000110120111000020200220200100020120000000000","sol":[2856]},{"id":"2-7","n":2,"side":2,"b":"0111010000020200000020000012121200010002000002020000001000000200","sol":[7579]},{"id":"2-8","n":2,"side":2,"b":"2001000000002000200011012200201000200200220002001000010000000001","sol":[1728]},{"id":"2-9","n":2,"side":2,"b":"0001100000000000000000112022020000220000011000000002220000100210","sol":[2781]},{"id":"2-10","n":2,"side":2,"b":"0000000000000020001100020011200000001202002120120000000000111000","sol":[1386]},{"id":"2-11","n":2,"side":1,"b":"0000120000102000200021000011010000012000000110000002020200000000","sol":[1802]},{"id":"2-12","n":2,"side":2,"b":"0000100000000210100100020122020000200000000010000002220001001100","sol":[1303]},{"id":"2-13","n":2,"side":1,"b":"0020000000020000000021020012121002000110010100000000001000000000","sol":[2358]},{"id":"2-14","n":2,"side":1,"b":"0000000000000000001001010012122000200100002101020000000000010000","sol":[2299]},{"id":"2-15","n":2,"side":2,"b":"0020000000002200011020000000000000120200001100000010210000010000","sol":[1844]},{"id":"2-16","n":2,"side":1,"b":"0000000020110100210200000101000000000010100200002000200000000000","sol":[1704]},{"id":"2-17","n":2,"side":1,"b":"0000000102000000010100000000210200012010000220020000200000000000","sol":[5895]},{"id":"2-18","n":2,"side":1,"b":"0020000000200201001010002010010000020000000101000000020000000020","sol":[2319]},{"id":"2-19","n":2,"side":2,"b":"0000100000001000000200000002120000010020020020000002000002000010","sol":[2342]},{"id":"2-20","n":2,"side":1,"b":"0002000000012100000000000000110000022200000001010000020000000000","sol":[2443]}],"3":[{"id":"3-1","n":3,"side":1,"b":"0011000000000020200010102000010021000100000110122000020200020100","sol":[2237]},{"id":"3-2","n":3,"side":1,"b":"0111010020102000010000200100010201010000000000020000022000000022","sol":[4897]},{"id":"3-3","n":3,"side":1,"b":"0000010000002000000100120210011200200110210000100000002020000000","sol":[2857]},{"id":"3-4","n":3,"side":1,"b":"2011121020102000202000100000010000000112000000002000000000010000","sol":[2939]},{"id":"3-5","n":3,"side":2,"b":"0200000000000000002220010001220000200220212100010000000000100010","sol":[2278]},{"id":"3-6","n":3,"side":1,"b":"0000100000000000200210000010010002102002001010020001000000210100","sol":[6404]},{"id":"3-7","n":3,"side":1,"b":"0210110000000002010110020200122200000100000000000020000000020000","sol":[5957]},{"id":"3-8","n":3,"side":1,"b":"0002000000000020200001000010100000020010200221112000001000001000","sol":[2389]},{"id":"3-9","n":3,"side":2,"b":"0000000000000010002100020000220000012200002120201000200000100000","sol":[1757]},{"id":"3-10","n":3,"side":2,"b":"0000000000001000002002000020220200010001200010000000000000111000","sol":[1256]},{"id":"3-11","n":3,"side":2,"b":"0010000000000000000100021000000000000000010022020100020200202002","sol":[3503]},{"id":"3-12","n":3,"side":2,"b":"0001000000001000000000001000120200001100001202000020020000000010","sol":[2461]},{"id":"3-13","n":3,"side":2,"b":"0000020000200000001021000002000000010010002000110000010000100000","sol":[714]},{"id":"3-14","n":3,"side":2,"b":"0000000000000000000010200000000100010200000000000021220011010100","sol":[2774]}]};
 const TALK = {
   pick: ["선공이든 후공이든 골라. 결과는 같으니까.", "어느 쪽 할래? 어느 쪽이 질지는 이미 알지만.",
          "안에 사람 숨어 있는 거 아니야. 이번 튀르크는 진짜 기계거든.", "흑 할래, 백 할래? 고민하는 시간도 아깝다.",
@@ -1240,266 +1399,656 @@ const TALK = {
     "깨진 컵은 저절로 안 붙어. 엔트로피 때문이야. 네가 진 판도 저절로 안 뒤집히고.",
   ],
 };
-let recent = [], slowTimer = 0, chatTimer = 0, winTimer = 0, prevP = null, mateSaid = false, leadSaid = false, doomSaid = false;
-let humanNearSaid = false, engineNearSaid = false, longSaid = false, turnStart = 0;
-let games = 0, turkWins = 0, humanWins = 0, streak = 0; // this visit only
-const WIN = R.WIN, MATE = R.MATE_BOUND;
+</script>
+<script>
+"use strict";
+/* ===================== basics ===================== */
+const R = LoaEngine({ ttBits: 8 });
+const PASS = R.PASS, WIN = R.WIN, MATE = R.MATE_BOUND;
+const sqName = (s) => "abcdefgh"[s & 7] + (8 - (s >> 3));
+const mvText = (m) => (m === PASS ? "패스" : sqName(m & 63) + (m & 4096 ? "x" : "-") + sqName((m >> 6) & 63));
+const sideName = (p) => (p === 1 ? "흑" : "백");
+const winProb = (s) => (s >= MATE ? 1 : s <= -MATE ? 0 : 1 / (1 + Math.exp(-s / 300)));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+let level = store.get("turk-study-level", "easy");
+
+// position = base (start or {b, side}) + moves; returns everything the screen needs
+function replay(base, moves) {
+  if (base) R.setPosition(base.arr, base.side); else R.setStart();
+  const counts = new Map(), key = () => R.hash.join(",");
+  counts.set(key(), 1);
+  let over = false, winner = 0, passes = 0, reason = "";
+  for (const m of moves) {
+    const side = R.stm;
+    R.play(m);
+    if (m === PASS) { if (++passes >= 2) { over = true; reason = "stuck"; break; } }
+    else {
+      passes = 0;
+      const r = R.resultAfter(side, (m & 4096) !== 0);
+      if (r === 1) { over = true; winner = side; break; }
+      if (r === -1) { over = true; winner = 3 - side; break; }
+      if (r === 2) { over = true; reason = "both"; break; }
+    }
+    const k = key(), c = (counts.get(k) || 0) + 1; counts.set(k, c);
+    if (c >= 3) { over = true; reason = "repeat"; break; }
+  }
+  const b = Array.from(R.board), won = [];
+  if (winner) for (let s = 0; s < 64; s++) if (b[s] === winner) won.push(s);
+  return { b, stm: R.stm, over, winner, reason, won, legal: over ? [] : R.legalMoves(), last: moves.length ? moves[moves.length - 1] : -1 };
+}
+
+/* ===================== engine workers ===================== */
+const WORKER_SRC = (bits) => LoaEngine.toString() + `
+const E = LoaEngine({ ttBits: ${bits} });
+E.setWeights(${JSON.stringify(TUNED_WEIGHTS)});
+onmessage = function (e) {
+  const d = e.data;
+  if (d.base) E.setPosition(d.base.arr, d.base.side); else E.setStart();
+  for (const m of d.moves) E.play(m);
+  postMessage({ id: d.id, info: E.think({ time: d.time, multi: d.multi || 0, keepHistory: true }) });
+};`;
+class Brain {
+  constructor(bits) { this.bits = bits; this.w = null; this.busy = null; this.next = null; this.id = 0; this.broken = false; this.local = null; }
+  worker() {
+    if (this.w || this.broken) return this.w;
+    try {
+      this.w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC(this.bits)], { type: "text/javascript" })));
+      this.w.onmessage = (e) => this.done(e.data);
+      this.w.onerror = () => { this.broken = true; this.w = null; const b = this.busy; this.busy = null; if (b) this.run(b.req, b.cb); };
+    } catch (e) { this.broken = true; this.w = null; }
+    return this.w;
+  }
+  run(req, cb) { // only the latest waiting job is kept
+    if (this.busy) { this.next = { req, cb }; return; }
+    const id = ++this.id;
+    this.busy = { id, req, cb };
+    const w = this.worker();
+    const msg = { id, base: req.base || null, moves: req.moves, time: req.time, multi: req.multi || 0 };
+    if (w) w.postMessage(msg);
+    else setTimeout(() => { // fallback: think on the page (it pauses meanwhile)
+      if (!this.local) { this.local = LoaEngine({ ttBits: 16 }); this.local.setWeights(TUNED_WEIGHTS); }
+      const E = this.local;
+      if (msg.base) E.setPosition(msg.base.arr, msg.base.side); else E.setStart();
+      for (const m of msg.moves) E.play(m);
+      this.done({ id, info: E.think({ time: Math.min(msg.time, 1500), multi: msg.multi, keepHistory: true }) });
+    }, 20);
+  }
+  done(d) {
+    if (!this.busy || d.id !== this.busy.id) return;
+    const cb = this.busy.cb; this.busy = null;
+    cb(d.info);
+    if (!this.busy && this.next) { const n = this.next; this.next = null; this.run(n.req, n.cb); }
+  }
+  drop() { this.next = null; } // forget waiting work (callbacks guard themselves with tokens)
+  kill() { if (this.w && this.busy) { this.w.terminate(); this.w = null; } this.busy = null; this.next = null; }
+}
+const playBrain = new Brain(20), anaBrain = new Brain(19);
+
+/* ===================== Turk talks ===================== */
+const STUDY_TALK = {
+  gradeBest: ["흠, 그게 최선 맞아. 우연이겠지.", "정답. 내가 가르쳐준 거나 마찬가지지.", "오, 최선수. 오늘 운 좋네.", "맞아. 그 수 말고는 없었어."],
+  gradeGood: ["나쁘지 않아. 최선은 아니지만.", "괜찮은 수야. 내 1순위는 {best}였지만.", "그 정도면 쓸 만해."],
+  gradeOk: ["무난하네. 무난하게 지는 중이야.", "그럭저럭. {best}가 더 좋았어.", "나쁘진 않은데, 좋지도 않아."],
+  gradeDubious: ["음, 그 수는 좀 애매한데.", "부정확해. 승률 {d}%p 날아갔어.", "{best} 두면 됐는데."],
+  gradeMistake: ["실수야. 승률 {d}%p 손해.", "그거 말고 {best}였어.", "아깝다. 아니, 나는 안 아까워."],
+  gradeBlunder: ["그 수 진심이야? 승률 {d}%p 날아갔어.", "고마워. 방금 그거 선물 맞지?", "{best} 두면 됐는데. 이제 늦었어.", "손이 미끄러진 거지? 그렇다고 해줄게."],
+  gradeMissWin: ["이길 수 있었는데 놓쳤어. {best}였어.", "방금 강제 연결이 있었어. {best}. 못 봤지?"],
+  hintOn: ["추천 수 보여줄게. 이걸 봐도 지겠지만.", "내 1순위는 이거야. 따라 하면 좀 버틸걸.", "커닝 허락. 오늘만."],
+  anaStart: ["분석 모드. 양쪽 다 네가 둬. 옆에서 훈수 둘게.", "여기선 안 이겨도 돼. 대신 이유를 봐."],
+  reviewStart: ["복기 시작. 네 실수들 하나씩 보자.", "어디서부터 꼬였는지 보자. 힌트: 초반."],
+  pzStart: ["{side} 차례. {n}수 안에 이어봐. 나는 막을 거야.", "{n}수 안에 끝나는 판이야. 찾아봐.", "정답은 딱 하나야. {n}수 안에."],
+  pzSolved: ["...풀었네. 쉬운 문제였어.", "정답. 다음 건 이렇게 안 쉬워.", "인정. 근데 실전에선 내가 이런 기회 안 줘.", "풀었다고 우쭐하지 마. 내가 낸 문제야."],
+  pzFail: ["땡. 다시 해봐.", "그 수로는 안 돼. 내가 막았잖아.", "{n}수 안에 못 이었어. 힌트 써도 돼. 조금 부끄럽지만."],
+  pzHint: ["힌트: 테두리 친 말을 움직여.", "이 말이야. 어디로 갈지는 네가 찾아.", "이 말. 더는 안 알려줘."],
+  pzHint2: ["여기까지 알려주면 거의 답이지. 점선 말을 실선 칸으로.", "이건 거의 정답 공개야."],
+  pzAllDone: ["이 단계 다 풀었네. 다음 단계 가봐. 거기선 안 봐줘."],
+};
+Object.assign(TALK, STUDY_TALK);
+let recent = [];
 function say(key, vars) {
-  const fresh = TALK[key].filter((x) => !recent.includes(x)); // don't repeat anything said in the last few lines
-  const pool = fresh.length ? fresh : TALK[key];
+  const all = TALK[key]; if (!all) return;
+  const fresh = all.filter((x) => !recent.includes(x));
+  const pool = fresh.length ? fresh : all;
   const line = pool[Math.floor(Math.random() * pool.length)];
   recent = [line].concat(recent).slice(0, 4);
   document.getElementById("say-text").textContent = line.replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] !== undefined ? vars[k] : ""));
   const b = document.getElementById("bubble");
   b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
 }
-const man = (n) => (n >= 10000 ? Math.round(n / 10000) + "만" : String(n));
-// small talk: pick a topic in proportion to how many lines it has
-const CHAT = ["chatComputer", "chatCreature", "chatGames", "chatSpace", "chatMath", "chatEngineering", "chatSea", "chatBody", "chatWords",
-              "chatHistory", "chatEarth", "chatFood", "chatPhysics"];
+const CHAT = Object.keys(TALK).filter((k) => k.startsWith("chat"));
 function chat() {
   let r = Math.random() * CHAT.reduce((a, k) => a + TALK[k].length, 0);
   for (const k of CHAT) { r -= TALK[k].length; if (r < 0) { say(k); return; } }
-  say(CHAT[0]);
-}
-function endTalk() {
-  clearTimeout(slowTimer); clearTimeout(chatTimer);
-  const st = state;
-  games++;
-  if (!st.winner) { streak = 0; say("draw"); return; }
-  let follow;
-  if (st.winner === human) { humanWins++; streak = 0; say("humanWin"); follow = "humanWin2"; }
-  else {
-    turkWins++; streak++;
-    // rub it in, with real numbers from the final position
-    say("engineWin", { n: Math.ceil(moves.length / 2), g: R._label(human) });
-    follow = "engineWin2";
-  }
-  const g = gameId;
-  clearTimeout(winTimer);
-  winTimer = setTimeout(() => { if (g === gameId && state.over) say(follow); }, 3500);
-}
-// after the engine's move; info.score is from the engine's side before it moved
-function engineTalk(m, info) {
-  if (state.over) { endTalk(); return; }
-  if (m === PASS) { say("enginePass"); return; }
-  const sc = info.score;
-  if (sc >= MATE) {
-    const n = Math.ceil((WIN - sc) / 2) - 1; // engine moves still needed after this one
-    say(mateSaid ? "mateCount" : "mate", { n }); mateSaid = true; prevP = 1; return;
-  }
-  if (sc <= -MATE) { if (!doomSaid) { doomSaid = true; say("doomed"); } prevP = 0; return; }
-  const p = 1 / (1 + Math.exp(-sc / 300));
-  const swing = prevP === null ? 0 : p - prevP; // how much the human's last move changed my winning chances
-  if (swing > 0.15 && p > 0.6) say("blunder", { d: Math.round(swing * 100) });
-  else if (swing <= -0.1 && Math.random() < 0.7) say("goodMove");
-  else if (m & 4096) say("engineCap");
-  else if (!engineNearSaid && R._label(3 - human) === 2) { engineNearSaid = true; say("engineNear"); }
-  else if (p > 0.85 && !leadSaid) { leadSaid = true; say("winning", { p: Math.round(p * 100) }); }
-  else {
-    const r = Math.random();
-    if (info.depth >= 3 && r < 0.25) say("normal", { depth: info.depth, nodes: man(info.nodes) });
-    else if (r < 0.42) chat();
-  }
-  prevP = p;
-}
-function humanTalk(m, elapsed) {
-  clearTimeout(slowTimer); clearTimeout(chatTimer);
-  if (state.over) { endTalk(); return; }
-  if (m === PASS) say("humanPass");
-  else if (m & 4096) say("humanCap");
-  else if (!humanNearSaid && R._label(human) === 2) { humanNearSaid = true; say("humanNear"); }
-  else if (elapsed < 1500 && Math.random() < 0.3) say("fast");
-  else if (!longSaid && moves.length >= 60) { longSaid = true; say("longGame"); }
-}
-function armSlowTimer() {
-  clearTimeout(slowTimer); clearTimeout(chatTimer);
-  turnStart = Date.now();
-  clearTimeout(chatTimer);
-  const ply = moves.length, g = gameId;
-  const still = () => g === gameId && moves.length === ply && started && !state.over && state.stm === human;
-  chatTimer = setTimeout(() => { if (still() && Math.random() < 0.6) chat(); }, 15000);
-  slowTimer = setTimeout(() => { if (still()) say("slow"); }, 40000);
 }
 
-function replay() {
-  R.setStart();
-  const counts = new Map(), key = () => R.hash.join(",");
-  counts.set(key(), 1);
-  let over = false, winner = 0, passes = 0;
-  for (const m of moves) {
-    const side = R.stm;
-    R.play(m);
-    if (m === PASS) { if (++passes >= 2) { over = true; break; } }
-    else {
-      passes = 0;
-      const r = R.resultAfter(side, (m & 4096) !== 0);
-      if (r === 1) { over = true; winner = side; break; }
-      if (r === -1) { over = true; winner = 3 - side; break; }
-      if (r === 2) { over = true; break; }
-    }
-    const k = key(), c = (counts.get(k) || 0) + 1; counts.set(k, c);
-    if (c >= 3) { over = true; break; }
+/* ===================== grades and explanations ===================== */
+const GRADES = [
+  { key: "best", name: "최선", max: 2 }, { key: "good", name: "좋은 수", max: 6 }, { key: "ok", name: "무난", max: 12 },
+  { key: "dubious", name: "부정확", max: 20 }, { key: "mistake", name: "실수", max: 35 }, { key: "blunder", name: "블런더", max: 101 },
+];
+const gColor = (k) => `var(--g-${k})`;
+const gradeOf = (lossPct) => GRADES.find((g) => lossPct <= g.max);
+function legendHTML() { return GRADES.map((g) => `<span><i class="gdot" style="--gc:${gColor(g.key)}"></i>${g.name}</span>`).join("") + `<span>승률 손해 기준</span>`; }
+function pctFor(score) { // the mover's chance in words
+  if (score >= MATE) return `${Math.ceil((WIN - score) / 2)}수 안에 연결`;
+  if (score <= -MATE) return `${Math.ceil((WIN + score) / 2)}수 안에 짐`;
+  return Math.round(winProb(score) * 100) + "%";
+}
+// facts about move m in the current R position (call right after replay of that position)
+function reasons(m) {
+  const d = R.describe(m), L = [];
+  const easy = level === "easy";
+  if (d.result === 1) { L.push(easy ? "이 수로 내 말이 전부 이어져서 바로 이겨." : "즉시 연결 (승리)"); return L; }
+  if (d.result === -1) { L.push(easy ? "이 수를 두면 상대 말이 이어져서 져." : "상대 연결 허용 (패배)"); return L; }
+  if (d.result === 2) { L.push(easy ? "양쪽이 동시에 이어져서 무승부가 돼." : "동시 연결 (무승부)"); return L; }
+  const gb = d.groupsBefore, ga = d.groupsAfter, cb = d.concBefore, ca = d.concAfter;
+  if (easy) {
+    if (ga < gb) L.push(`내 말 덩어리가 ${gb}개에서 ${ga}개로 줄어. 1개가 되면 이겨.`);
+    else if (ga > gb) L.push(`내 말 덩어리는 ${gb}개에서 ${ga}개로 늘어.`);
+    else L.push(`덩어리 수는 ${ga}개 그대로야.`);
+    if (ca < cb) L.push(`말들이 전체적으로 더 모여. 흩어진 정도 ${cb} → ${ca} (작을수록 잘 모인 것).`);
+    else if (ca > cb) L.push(`말들이 조금 퍼져. 흩어진 정도 ${cb} → ${ca}.`);
+    if (d.threat) L.push("다음 수에 바로 이을 수 있는 모양을 만들어. 상대는 막아야 해.");
+    if (d.blocks) L.push("상대가 바로 이을 수 있던 걸 막아.");
+    if (d.capture) L.push("상대 말을 잡아. 다만 상대 말이 줄면 상대도 잇기 쉬워져.");
+    if (d.ringTo > d.ringFrom) L.push("가장자리에서 가운데 쪽으로 가.");
+    if (d.allowsWin) L.push("주의: 이걸 두면 상대가 바로 이을 수 있어.");
+  } else {
+    const p = [`덩어리 ${gb}→${ga}`, `흩어짐 ${cb}→${ca}`];
+    if (d.threat) p.push("연결 위협");
+    if (d.blocks) p.push("상대 위협 차단");
+    if (d.capture) p.push("잡기");
+    if (d.allowsWin) p.push("상대 즉시 연결 허용");
+    L.push(p.join(" · "));
   }
-  const b = Array.from(R.board);
-  const won = [];
-  if (winner) for (let s = 0; s < 64; s++) if (b[s] === winner) won.push(s);
-  return { b, stm: R.stm, over, winner, won, legal: over ? [] : R.legalMoves(), last: moves.length ? moves[moves.length - 1] : -1 };
+  return L;
+}
+const HC = ["var(--g-best)", "var(--g-good)", "var(--g-dubious)"];
+function linesHTML(info, mover) {
+  if (!info || !info.lines || !info.lines.length) return `<div class="note">읽는 중…</div>`;
+  return info.lines.map((l, i) => {
+    const rs = reasons(l.move).map((t) => `<li>${t}</li>`).join("");
+    let who = mover;
+    const pv = l.pv.slice(1, 7).map((m) => { who = 3 - who; return `${sideName(who)} ${mvText(m)}`; }).join(" → ");
+    return `<button type="button" class="line" data-move="${l.move}" style="--hc:${HC[i]}">
+      <span class="head"><span class="badge">${i + 1}</span><span class="mono">${mvText(l.move)}</span><span class="pct">${sideName(mover)} ${pctFor(l.score)}</span></span>
+      <ul>${rs}</ul>${pv ? `<span class="pv">이후 예상: ${pv}</span>` : ""}</button>`;
+  }).join("");
 }
 
-/* ---------------- engine in a background worker ---------------- */
-const WORKER_SRC = LoaEngine.toString() + `
-const E = LoaEngine({ ttBits: 20 });
-E.setWeights(${JSON.stringify(TUNED_WEIGHTS)});
-onmessage = function (e) {
-  const d = e.data;
-  E.setStart();
-  for (const m of d.moves) E.play(m);
-  postMessage({ id: d.id, info: E.think({ time: d.time, keepHistory: true }) });
-};`;
-let worker = null, workerBroken = false, busy = null, reqId = 0, localE = null;
-function getWorker() {
-  if (worker || workerBroken) return worker;
-  try {
-    worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" })));
-    worker.onmessage = (e) => done(e.data);
-    worker.onerror = () => { worker = null; workerBroken = true; if (busy) runLocal(busy); };
-  } catch (e) { worker = null; workerBroken = true; }
-  return worker;
-}
-function send(req) {
-  busy = req;
-  const w = getWorker();
-  if (w) w.postMessage({ id: req.id, moves: req.moves, time: req.time });
-  else runLocal(req);
-}
-function runLocal(req) { // no worker available: think on the page itself (the page pauses meanwhile)
-  if (!localE) { localE = LoaEngine({ ttBits: 18 }); localE.setWeights(TUNED_WEIGHTS); }
-  setTimeout(() => {
-    localE.setStart(); for (const m of req.moves) localE.play(m);
-    done({ id: req.id, info: localE.think({ time: req.time, keepHistory: true }) });
-  }, 30);
-}
-function done(d) {
-  if (!busy || d.id !== busy.id) return;
-  const req = busy; busy = null;
-  if (req.game === gameId && !req.ponder && !state.over && state.stm !== human) {
-    let m = d.info.move;
-    if (m !== PASS && !state.legal.includes(m)) m = state.legal[0];
-    commit(m);
-    engineTalk(m, d.info);
-    return;
-  }
-  next();
-}
-
-/* ---------------- flow ---------------- */
-function next() {
-  if (!started || busy || state.over) return;            // a ponder slice calls next() again when it ends
-  if (!state.legal.length) {                               // no legal move: pass
-    const engineSide = state.stm !== human;
-    commit(PASS);
-    if (engineSide) engineTalk(PASS, { score: 0, depth: 0, nodes: 0 }); else humanTalk(PASS);
-    return;
-  }
-  if (state.stm !== human) send({ id: ++reqId, game: gameId, moves: moves.slice(), time: THINK_MS, ponder: false });
-  else if (!workerBroken) send({ id: ++reqId, game: gameId, moves: moves.slice(), time: PONDER_MS, ponder: true });
-  render();
-}
-function commit(m) {
-  moves.push(m); sel = -1;
-  state = replay();
-  render(m === PASS ? -1 : m & 63, m === PASS ? -1 : (m >> 6) & 63);
-  next();
-  if (started && !state.over && state.stm === human) armSlowTimer();
-}
-// "새 게임": stop, reset the board, and ask for a side again
-function newGame() {
-  gameId++;
-  if (busy && !busy.ponder && worker) { worker.terminate(); worker = null; busy = null; } // don't wait out a 5 s think
-  started = false; moves = []; sel = -1;
-  clearTimeout(slowTimer); clearTimeout(chatTimer); clearTimeout(winTimer);
-  state = replay();
-  say("pick");
-  document.getElementById("pick").hidden = false;
-  document.getElementById("btn-new").hidden = true;
-  render();
-  document.getElementById("pick-1").focus();
-}
-function start(side) {
-  gameId++;
-  human = side; started = true; moves = []; sel = -1;
-  prevP = null; mateSaid = leadSaid = doomSaid = false;
-  humanNearSaid = engineNearSaid = longSaid = false;
-  clearTimeout(winTimer);
-  state = replay();
-  if (games > 0 && streak >= 2 && Math.random() < 0.7) say("streak", { k: streak });
-  else if (games > 0 && Math.random() < 0.6) say("rematch", { w: turkWins, l: humanWins });
-  else say(side === 1 ? "startHumanBlack" : "startEngineBlack");
-  if (side === 1) armSlowTimer();
-  document.getElementById("pick").hidden = true;
-  document.getElementById("btn-new").hidden = false;
-  boardEl.setAttribute("aria-label", "LOA 판, 나는 " + (side === 1 ? "흑" : "백"));
-  render();
-  next();
-}
-function onSquare(s) {
-  if (!started || state.over || state.stm !== human) return;
-  if (sel >= 0) {
-    const m = state.legal.find((x) => (x & 63) === sel && ((x >> 6) & 63) === s);
-    if (m !== undefined) { const el = Date.now() - turnStart; commit(m); humanTalk(m, el); return; }
-    sel = state.b[s] === human && state.legal.some((x) => (x & 63) === s) ? s : -1;
-    render(); return;
-  }
-  if (state.b[s] === human && state.legal.some((x) => (x & 63) === s)) { sel = s; render(); }
-}
-
-/* ---------------- drawing ---------------- */
+/* ===================== board drawing ===================== */
 const boardEl = document.getElementById("board"), sqEls = [];
 for (let s = 0; s < 64; s++) {
   const el = document.createElement("button");
   el.type = "button";
   el.className = "sq" + (((s >> 3) + (s & 7)) % 2 ? " dk" : "");
   el.id = "sq-" + sqName(s);
-  el.addEventListener("click", () => onSquare(s));
+  el.addEventListener("click", () => current().onSquare(s));
   boardEl.appendChild(el); sqEls.push(el);
 }
-function render(animFrom, animTo) {
-  const st = state;
-  const targets = new Map();
-  if (sel >= 0) for (const m of st.legal) if ((m & 63) === sel) targets.set((m >> 6) & 63, (m & 4096) !== 0);
+// view: { st, sel, selectable(side), hints: [{move, rank}], fromOnly: [sq], toOnly: [sq], thinking }
+function drawBoard(v, animMove) {
+  const st = v.st, targets = new Map();
+  if (v.sel >= 0) for (const m of st.legal) if ((m & 63) === v.sel) targets.set((m >> 6) & 63, (m & 4096) !== 0);
   const real = st.last >= 0 && st.last !== PASS;
   const lf = real ? st.last & 63 : -1, lt = real ? (st.last >> 6) & 63 : -1;
+  const hintFrom = new Map(), hintTo = new Map();
+  for (const h of v.hints || []) {
+    if (!hintFrom.has(h.move & 63)) hintFrom.set(h.move & 63, h.rank);
+    if (!hintTo.has((h.move >> 6) & 63)) hintTo.set((h.move >> 6) & 63, h.rank);
+  }
+  for (const s of v.fromOnly || []) hintFrom.set(s, 1);
+  for (const s of v.toOnly || []) hintTo.set(s, 1);
   for (let s = 0; s < 64; s++) {
     const el = sqEls[s], p = st.b[s];
     el.classList.toggle("last", s === lf || s === lt);
-    el.classList.toggle("sel", s === sel);
+    el.classList.toggle("sel", s === v.sel);
     el.classList.toggle("won", st.won.includes(s));
+    el.classList.toggle("hfrom", hintFrom.has(s));
+    if (hintFrom.has(s)) el.style.setProperty("--hc", HC[hintFrom.get(s) - 1]); else el.style.removeProperty("--hc");
     let h = p ? `<span class="piece ${p === 1 ? "b" : "w"}"></span>` : "";
     if (targets.has(s)) h += targets.get(s) ? `<span class="ring"></span>` : `<span class="dot"></span>`;
+    if (hintTo.has(s)) { const r = hintTo.get(s); h += `<span class="hint" style="--hc:${HC[r - 1]}"></span><span class="rank" style="--hc:${HC[r - 1]}">${(v.fromOnly || v.toOnly) ? "!" : r}</span>`; }
     if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
-    el.setAttribute("aria-label", sqName(s) + (p ? (p === 1 ? " 흑" : " 백") : " 빈칸") + (targets.has(s) ? ", 여기로 이동 가능" : ""));
+    el.setAttribute("aria-label", sqName(s) + (p ? " " + sideName(p) : " 빈칸") + (targets.has(s) ? ", 이동 가능" : "") + (hintTo.has(s) ? ", 추천 칸" : ""));
   }
-  boardEl.classList.toggle("thinking", started && !st.over && st.stm !== human);
-  boardEl.classList.toggle("drawn", st.over && !st.winner);
-  if (animFrom >= 0 && animTo >= 0 && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    const pc = sqEls[animTo].querySelector(".piece");
+  boardEl.classList.toggle("thinking", !!v.thinking);
+  if (animMove >= 0 && animMove !== PASS && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const f = animMove & 63, t = (animMove >> 6) & 63, pc = sqEls[t].querySelector(".piece");
     if (pc) {
-      const a = sqEls[animFrom].getBoundingClientRect(), b = sqEls[animTo].getBoundingClientRect();
+      const a = sqEls[f].getBoundingClientRect(), b = sqEls[t].getBoundingClientRect();
       pc.style.transform = `translate(${a.left - b.left}px, ${a.top - b.top}px)`;
-      pc.getBoundingClientRect();
-      pc.classList.add("moving");
-      pc.style.transform = "";
+      pc.getBoundingClientRect(); pc.classList.add("moving"); pc.style.transform = "";
     }
   }
 }
+function setEval(pBlack) { document.getElementById("eval-fill").style.height = (Math.max(0, Math.min(1, pBlack)) * 100).toFixed(1) + "%"; }
+function movesHTML(moves, opts) {
+  if (!moves.length) return `<span class="n"></span><span class="note">아직 둔 수가 없어.</span><span></span>`;
+  let h = "";
+  const firstSide = opts.firstSide || 1;
+  const cells = moves.map((m, i) => {
+    const g = opts.grades && opts.grades[i];
+    const dot = g ? `<i class="gdot" style="--gc:${gColor(g.key)}" title="${g.name}"></i>` : "";
+    const cur = opts.cur === i + 1 ? " cur" : "";
+    return opts.clickable ? `<button type="button" class="mv${cur}" data-ply="${i + 1}">${dot}${mvText(m)}</button>` : `<span class="mv${cur}">${dot}${mvText(m)}</span>`;
+  });
+  if (firstSide === 2) cells.unshift(`<span class="mv"></span>`);
+  for (let i = 0; i < cells.length; i += 2) h += `<span class="n">${i / 2 + 1}.</span>${cells[i]}${cells[i + 1] || "<span></span>"}`;
+  return h;
+}
+function scrollMoves(el) { const c = el.querySelector(".cur"); if (c) c.scrollIntoView({ block: "nearest" }); else el.scrollTop = el.scrollHeight; }
 
-document.getElementById("btn-new").addEventListener("click", newGame);
-document.getElementById("pick-1").addEventListener("click", () => start(1));
-document.getElementById("pick-2").addEventListener("click", () => start(2));
-state = replay();
-render();
+/* ===================== analysis loop (runs in the background worker) ===================== */
+let anaToken = 0;
+// repeatedly analyse one position in short slices (each slice reuses what the last one learned)
+function analyze(base, moves, maxMs, onInfo) {
+  const token = ++anaToken;
+  anaBrain.drop();
+  let spent = 0;
+  const step = () => anaBrain.run({ base, moves: moves.slice(), time: 1000, multi: 3 }, (info) => {
+    onInfo(info, token === anaToken);
+    if (token !== anaToken) return;
+    spent += info.ms;
+    if (spent < maxMs && info.lines && info.lines.length && Math.abs(info.lines[0].score) < MATE) step();
+  });
+  step();
+}
+function stopAnalysis() { anaToken++; anaBrain.drop(); }
+
+/* ===================== mode: game ===================== */
+const game = {
+  started: false, human: 1, moves: [], grades: {}, anaByPly: {}, engByPly: {}, showHints: false, sel: -1, token: 0,
+  st: null, chatTimer: 0, prevP: null,
+  enter() { this.render(); if (this.started) this.next(); },
+  leave() { stopAnalysis(); clearTimeout(this.chatTimer); playBrain.kill(); this.token++; },
+  start(side) {
+    playBrain.kill(); stopAnalysis(); this.token++;
+    Object.assign(this, { started: true, human: side, moves: [], grades: {}, anaByPly: {}, engByPly: {}, sel: -1, prevP: null, lastGrade: null, finished: -1 });
+    say(side === 1 ? "startHumanBlack" : "startEngineBlack");
+    this.next();
+  },
+  reset() {
+    playBrain.kill(); stopAnalysis(); this.token++; clearTimeout(this.chatTimer);
+    Object.assign(this, { started: false, moves: [], grades: {}, anaByPly: {}, engByPly: {}, sel: -1, lastGrade: null, finished: -1 });
+    say("pick"); this.render();
+  },
+  next() {
+    this.st = replay(null, this.moves);
+    const st = this.st, tok = this.token;
+    if (st.over) { this.finish(); this.render(); return; }
+    if (!st.legal.length) { this.moves.push(PASS); say(st.stm === this.human ? "humanPass" : "enginePass"); this.next(); return; }
+    if (st.stm !== this.human) {
+      stopAnalysis();
+      const ply = this.moves.length;
+      playBrain.run({ moves: this.moves.slice(), time: 5000 }, (info) => {
+        if (tok !== this.token || this.moves.length !== ply) return;
+        let m = info.move;
+        if (m !== PASS && !this.st.legal.includes(m)) m = this.st.legal[0];
+        this.engByPly[ply] = info; // engine's view right after my move (ply-1)
+        const pe = winProb(info.score); setEval(this.human === 1 ? 1 - pe : pe);
+        this.moves.push(m);
+        this.tryGrade(ply - 1);
+        this.engineTalk(m, info);
+        this.next();
+        this.render(m);
+      });
+    } else {
+      const ply = this.moves.length;
+      clearTimeout(this.chatTimer);
+      this.chatTimer = setTimeout(() => { if (tok === this.token && this.moves.length === ply) chat(); }, 20000);
+      analyze(null, this.moves, 15000, (info, live) => {
+        this.anaByPly[ply] = info;
+        this.tryGrade(ply);
+        if (live && current() === this) { this.renderHints(); setEval(this.human === 1 ? winProb(info.score) : 1 - winProb(info.score)); }
+      });
+    }
+    this.render();
+  },
+  // grade my move at ply once the analysis before it and the engine's view after it are both known
+  tryGrade(ply) {
+    if (this.grades[ply] || ply < 0 || ply >= this.moves.length) return;
+    const st0 = replay(null, this.moves.slice(0, ply));
+    if (st0.stm !== this.human) return;
+    const a = this.anaByPly[ply], m = this.moves[ply];
+    if (!a || !a.lines || !a.lines.length || m === PASS) return;
+    const after = replay(null, this.moves.slice(0, ply + 1));
+    let played;
+    const inLines = a.lines.find((l) => l.move === m);
+    if (after.over) played = after.winner === this.human ? WIN - 1 : after.winner ? -WIN + 1 : 0;
+    else if (inLines) played = inLines.score;
+    else if (this.engByPly[ply + 1]) played = -this.engByPly[ply + 1].score;
+    else return;
+    const best = a.lines[0];
+    const loss = Math.max(0, Math.round((winProb(best.score) - winProb(played)) * 100));
+    let g = gradeOf(loss);
+    const missedWin = best.score >= MATE && played < MATE;
+    if (missedWin && GRADES.indexOf(g) < 4) g = GRADES[4];
+    if (best.move === m || played >= best.score) g = GRADES[0];
+    this.grades[ply] = { key: g.key, name: g.name, loss, best: best.move, played, bestScore: best.score, missedWin };
+    if (ply === this.lastMinePly()) {
+      this.lastGrade = ply;
+      const vars = { d: loss, best: mvText(best.move) };
+      if (missedWin) say("gradeMissWin", vars);
+      else say("grade" + g.key[0].toUpperCase() + g.key.slice(1), vars);
+    }
+    this.render();
+  },
+  lastMinePly() { for (let i = this.moves.length - 1; i >= 0; i--) if (replay(null, this.moves.slice(0, i)).stm === this.human && this.moves[i] !== PASS) return i; return -1; },
+  engineTalk(m, info) {
+    const st = replay(null, this.moves);
+    if (st.over) return;
+    if (m & 4096) say("engineCap");
+    else if (info.score >= MATE) say("mate", { n: Math.max(1, Math.ceil((WIN - info.score) / 2) - 1) });
+  },
+  finish() {
+    const st = this.st;
+    if (this.finished === this.moves.length) return;
+    this.finished = this.moves.length;
+    clearTimeout(this.chatTimer); stopAnalysis();
+    if (!st.winner) say("draw");
+    else if (st.winner === this.human) say("humanWin");
+    else say("engineWin", { n: Math.ceil(this.moves.length / 2), g: R._label(this.human) });
+  },
+  onSquare(s) {
+    const st = this.st;
+    if (!this.started || !st || st.over || st.stm !== this.human) return;
+    if (this.sel >= 0) {
+      const m = st.legal.find((x) => (x & 63) === this.sel && ((x >> 6) & 63) === s);
+      if (m !== undefined) {
+        this.sel = -1; this.moves.push(m);
+        if (m & 4096) say("humanCap");
+        this.tryGrade(this.moves.length - 1);
+        this.next(); this.render(m); return;
+      }
+      this.sel = st.b[s] === this.human && st.legal.some((x) => (x & 63) === s) ? s : -1;
+      this.render(); return;
+    }
+    if (st.b[s] === this.human && st.legal.some((x) => (x & 63) === s)) { this.sel = s; this.render(); }
+  },
+  undo() {
+    if (!this.started || !this.moves.length) return;
+    playBrain.kill(); stopAnalysis(); this.token++; this.finished = -1;
+    do { this.moves.pop(); } while (this.moves.length && replay(null, this.moves).stm !== this.human);
+    for (const k of Object.keys(this.grades)) if (+k >= this.moves.length) delete this.grades[k];
+    this.lastGrade = null; this.sel = -1;
+    this.next();
+  },
+  renderHints() {
+    const card = document.getElementById("g-hints");
+    const st = this.st, mine = this.started && st && !st.over && st.stm === this.human;
+    card.hidden = !(this.showHints && mine);
+    if (card.hidden) return;
+    const info = this.anaByPly[this.moves.length];
+    replay(null, this.moves); // R must sit on this position for the explanations
+    document.getElementById("g-lines").innerHTML = linesHTML(info, this.human);
+    document.getElementById("g-hints-depth").textContent = info ? `${info.depth}수 앞까지 읽음` : "";
+    this.drawBoard();
+  },
+  hintsOnBoard() {
+    const st = this.st;
+    if (!(this.showHints && this.started && st && !st.over && st.stm === this.human)) return [];
+    const info = this.anaByPly[this.moves.length];
+    return info && info.lines ? info.lines.map((l, i) => ({ move: l.move, rank: i + 1 })) : [];
+  },
+  drawBoard(anim) {
+    const st = this.st || replay(null, []);
+    drawBoard({ st, sel: this.sel, hints: this.hintsOnBoard(), thinking: this.started && !st.over && st.stm !== this.human }, anim);
+  },
+  render(anim) {
+    this.st = this.st || replay(null, this.moves);
+    const st = this.st;
+    document.getElementById("g-pick").hidden = this.started;
+    document.getElementById("g-controls").hidden = !this.started;
+    document.getElementById("g-undo").disabled = !this.started || this.moves.length < (this.human === 1 ? 1 : 2);
+    const hb = document.getElementById("g-hint");
+    hb.setAttribute("aria-pressed", String(this.showHints)); hb.classList.toggle("on", this.showHints);
+    hb.textContent = this.showHints ? "추천 수 숨기기" : "추천 수 보기";
+    const status = document.getElementById("g-status"), banner = document.getElementById("g-banner");
+    banner.hidden = true; document.getElementById("g-review").hidden = true;
+    if (!this.started) status.innerHTML = "흑이나 백을 골라서 시작해.";
+    else if (st.over) {
+      status.innerHTML = st.winner ? `<span class="chip ${st.winner === 1 ? "b" : "w"}"></span>${sideName(st.winner)} 승리` : "무승부";
+      banner.hidden = false; banner.className = "banner " + (st.winner === this.human ? "ok" : "bad");
+      const gs = Object.values(this.grades), cnt = (k) => gs.filter((g) => g.key === k).length;
+      banner.textContent = `내 수 ${gs.length}개 채점: 최선 ${cnt("best")} · 좋은 수 ${cnt("good")} · 무난 ${cnt("ok")} · 부정확 ${cnt("dubious")} · 실수 ${cnt("mistake")} · 블런더 ${cnt("blunder")}`;
+      document.getElementById("g-review").hidden = false;
+    } else if (st.stm === this.human) status.innerHTML = `<span class="chip ${this.human === 1 ? "b" : "w"}"></span>내 차례 (${sideName(this.human)})`;
+    else status.innerHTML = `<span class="chip ${this.human === 1 ? "w" : "b"}"></span>튀르크가 생각하는 중…`;
+    // last graded move of mine
+    const gc = document.getElementById("g-gradecard"), gi = this.lastGrade;
+    const g = gi !== null && gi !== undefined ? this.grades[gi] : null;
+    gc.hidden = !g;
+    if (g) {
+      const before = replay(null, this.moves.slice(0, gi));
+      const why = g.best !== this.moves[gi] ? reasons(g.best)[0] : "";
+      document.getElementById("g-grade").innerHTML = `<div class="grade" style="--gc:${gColor(g.key)}">
+        <span><span class="mono">${mvText(this.moves[gi])}</span> · <b>${g.name}</b>${g.loss ? ` · 승률 ${g.loss}%p 손해` : ""}</span>
+        ${g.best !== this.moves[gi] ? `<span class="note">최선은 <span class="mono">${mvText(g.best)}</span> (${sideName(this.human)} ${pctFor(g.bestScore)})${why ? ": " + why : ""}</span>` : `<span class="note">튀르크의 1순위와 같은 수.</span>`}
+      </div>`;
+      void before;
+    }
+    const firstSide = 1;
+    const gradeList = {}; for (const k in this.grades) gradeList[k] = this.grades[k];
+    document.getElementById("g-moves").innerHTML = movesHTML(this.moves, { grades: gradeList, firstSide });
+    scrollMoves(document.getElementById("g-moves"));
+    document.getElementById("g-legend").innerHTML = legendHTML();
+    this.st = replay(null, this.moves);
+    this.drawBoard(anim);
+    this.renderHints();
+    if (!this.started) setEval(0.5);
+    else if (st.over) setEval(st.winner === 1 ? 1 : st.winner === 2 ? 0 : 0.5);
+  },
+};
+
+/* ===================== mode: analysis ===================== */
+const ana = {
+  moves: [], cur: 0, grades: {}, human: 0, sel: -1, info: null, key: "",
+  enter(fromGame) {
+    if (fromGame) { this.moves = game.moves.slice(); this.cur = this.moves.length; this.grades = Object.assign({}, game.grades); this.human = game.human; say("reviewStart"); }
+    else say("anaStart");
+    this.go();
+  },
+  leave() { stopAnalysis(); },
+  go() {
+    this.sel = -1; this.info = null;
+    const mv = this.moves.slice(0, this.cur), st = replay(null, mv);
+    this.st = st;
+    this.render();
+    if (st.over) { stopAnalysis(); setEval(st.winner === 1 ? 1 : st.winner === 2 ? 0 : 0.5); return; }
+    const key = mv.join(","); this.key = key;
+    analyze(null, mv, 8000, (info, live) => {
+      if (!live || this.key !== key || current() !== this) return;
+      this.info = info;
+      setEval(st.stm === 1 ? winProb(info.score) : 1 - winProb(info.score));
+      this.render();
+    });
+  },
+  onSquare(s) {
+    const st = this.st;
+    if (!st || st.over) return;
+    if (this.sel >= 0) {
+      const m = st.legal.find((x) => (x & 63) === this.sel && ((x >> 6) & 63) === s);
+      if (m !== undefined) { this.play(m); return; }
+      this.sel = st.b[s] === st.stm && st.legal.some((x) => (x & 63) === s) ? s : -1; this.render(); return;
+    }
+    if (st.b[s] === st.stm && st.legal.some((x) => (x & 63) === s)) { this.sel = s; this.render(); }
+  },
+  play(m) {
+    if (this.cur < this.moves.length) { // a new branch replaces the rest of the line
+      if (this.moves[this.cur] === m) { this.cur++; this.go(); return; }
+      this.moves = this.moves.slice(0, this.cur);
+      for (const k of Object.keys(this.grades)) if (+k >= this.cur) delete this.grades[k];
+    }
+    this.moves.push(m); this.cur++;
+    this.go(); drawAnim(m);
+  },
+  render() {
+    const st = this.st;
+    replay(null, this.moves.slice(0, this.cur));
+    const s = document.getElementById("a-status");
+    if (st.over) s.innerHTML = st.winner ? `<span class="chip ${st.winner === 1 ? "b" : "w"}"></span>${sideName(st.winner)} 승리` : "무승부";
+    else s.innerHTML = `<span class="chip ${st.stm === 1 ? "b" : "w"}"></span>${sideName(st.stm)} 차례 · ${this.cur}수째`;
+    document.getElementById("a-depth").textContent = this.info ? `${this.info.depth}수 앞까지 읽음` : "";
+    document.getElementById("a-lines").innerHTML = st.over ? `<div class="note">끝난 국면이야.</div>` : linesHTML(this.info, st.stm);
+    document.getElementById("a-moves").innerHTML = movesHTML(this.moves, { grades: this.grades, clickable: true, cur: this.cur });
+    scrollMoves(document.getElementById("a-moves"));
+    document.getElementById("a-legend").innerHTML = Object.keys(this.grades).length ? legendHTML() : "";
+    document.getElementById("a-prev").disabled = document.getElementById("a-first").disabled = this.cur === 0;
+    document.getElementById("a-next").disabled = document.getElementById("a-last").disabled = this.cur >= this.moves.length;
+    document.getElementById("a-best").disabled = !this.info || !this.info.lines || !this.info.lines.length || st.over;
+    const hints = this.info && this.info.lines && !st.over ? this.info.lines.map((l, i) => ({ move: l.move, rank: i + 1 })) : [];
+    drawBoard({ st, sel: this.sel, hints });
+  },
+};
+function drawAnim(m) { current().drawBoard ? current().drawBoard(m) : null; }
+
+/* ===================== mode: puzzles ===================== */
+const pz = {
+  lvl: 1, idx: 0, moves: [], status: "play", sel: -1, hint: 0, token: 0, base: null,
+  solved: new Set(store.get("turk-study-solved", [])),
+  enter() { this.load(this.lvl, this.idx); },
+  leave() { playBrain.kill(); stopAnalysis(); this.token++; },
+  list() { return PUZZLES[this.lvl]; },
+  cur() { return this.list()[this.idx]; },
+  load(lvl, idx) {
+    playBrain.kill(); stopAnalysis(); this.token++;
+    this.lvl = lvl; this.idx = idx; this.moves = []; this.status = "play"; this.sel = -1; this.hint = 0; this.busy = false; this.hintMove = -1;
+    const p = this.cur();
+    this.base = { arr: p.b.split("").map(Number), side: p.side };
+    say("pzStart", { n: p.n, side: sideName(p.side) });
+    this.render();
+  },
+  st() { return replay(this.base, this.moves); },
+  userMoves() { return this.moves.filter((_, i) => i % 2 === 0).length; },
+  onSquare(s) {
+    const p = this.cur(), st = this.st();
+    if (this.status !== "play" || st.stm !== p.side || this.busy) return;
+    if (this.sel >= 0) {
+      const m = st.legal.find((x) => (x & 63) === this.sel && ((x >> 6) & 63) === s);
+      if (m !== undefined) { this.sel = -1; this.move(m); return; }
+      this.sel = st.b[s] === p.side && st.legal.some((x) => (x & 63) === s) ? s : -1; this.render(); return;
+    }
+    if (st.b[s] === p.side && st.legal.some((x) => (x & 63) === s)) { this.sel = s; this.render(); }
+  },
+  move(m) {
+    const p = this.cur();
+    this.moves.push(m); this.hint = 0;
+    let st = this.st();
+    if (st.over) { this.end(st.winner === p.side); this.render(m); return; }
+    if (this.userMoves() >= p.n) { this.end(false); this.render(m); return; }
+    // Turk defends
+    const tok = this.token; this.busy = true; this.render(m);
+    playBrain.run({ base: this.base, moves: this.moves.slice(), time: 900 }, (info) => {
+      if (tok !== this.token) return;
+      this.busy = false;
+      st = this.st();
+      let r = info.move;
+      if (!st.legal.length) r = PASS; else if (r !== PASS && !st.legal.includes(r)) r = st.legal[0];
+      this.moves.push(r);
+      const st2 = this.st();
+      if (st2.over) this.end(st2.winner === p.side);
+      this.render(r);
+    });
+  },
+  end(ok) {
+    const p = this.cur();
+    this.status = ok ? "solved" : "failed";
+    if (ok) {
+      this.solved.add(p.id); store.set("turk-study-solved", Array.from(this.solved));
+      if (this.list().every((q) => this.solved.has(q.id))) say("pzAllDone"); else say("pzSolved");
+    } else say("pzFail", { n: p.n });
+  },
+  doHint() {
+    const p = this.cur(), st = this.st();
+    if (this.status !== "play" || st.stm !== p.side || this.busy) return;
+    this.hint = Math.min(2, this.hint + 1);
+    if (this.moves.length === 0) { this.hintMove = p.sol[0]; say(this.hint === 1 ? "pzHint" : "pzHint2"); this.render(); return; }
+    // later steps: ask Turk for the attacking move
+    const tok = this.token; const h = this.hint;
+    anaBrain.run({ base: this.base, moves: this.moves.slice(), time: 600, multi: 0 }, (info) => {
+      if (tok !== this.token) return;
+      this.hintMove = info.move; say(h === 1 ? "pzHint" : "pzHint2"); this.render();
+    });
+  },
+  drawBoard(anim) {
+    const st = this.st();
+    const fromOnly = this.hint >= 1 && this.hintMove >= 0 && this.hintMove !== undefined ? [this.hintMove & 63] : [];
+    const toOnly = this.hint >= 2 ? [(this.hintMove >> 6) & 63] : [];
+    drawBoard({ st, sel: this.sel, fromOnly, toOnly, thinking: this.busy }, anim);
+  },
+  render(anim) {
+    const p = this.cur(), st = this.st();
+    for (const b of document.getElementById("seg-pz").querySelectorAll("button")) b.setAttribute("aria-pressed", String(+b.dataset.v === this.lvl));
+    const list = this.list();
+    document.getElementById("pz-count").textContent = `푼 문제 ${list.filter((q) => this.solved.has(q.id)).length} / ${list.length}`;
+    document.getElementById("pz-progress").innerHTML = list.map((q, i) =>
+      `<button type="button" class="${this.solved.has(q.id) ? "done" : ""}${i === this.idx ? " cur" : ""}" data-i="${i}" aria-label="${i + 1}번 문제">${i + 1}</button>`).join("");
+    document.getElementById("pz-prompt").innerHTML = `<span class="chip ${p.side === 1 ? "b" : "w"}"></span>${sideName(p.side)} 차례 · ${p.n}수 안에 전부 이어`;
+    const left = p.n - this.userMoves();
+    document.getElementById("pz-sub").textContent = this.status === "play" ? (this.busy ? "튀르크가 막는 중…" : `남은 수 ${left} · 문제 ${this.idx + 1}번`) : "";
+    const ban = document.getElementById("pz-banner");
+    ban.hidden = this.status === "play";
+    if (this.status === "solved") { ban.className = "banner ok"; ban.textContent = `성공. 정답 첫 수: ${mvText(p.sol[0])}`; }
+    if (this.status === "failed") { ban.className = "banner bad"; ban.textContent = st.winner && st.winner !== p.side ? "튀르크가 먼저 이었어. 다시 풀어봐." : `${p.n}수 안에 못 이었어. 다시 풀거나 힌트를 써봐.`; }
+    document.getElementById("pz-hint").disabled = this.status !== "play" || !!this.busy;
+    setEval(0.5);
+    this.drawBoard(anim);
+  },
+};
+
+/* ===================== wiring ===================== */
+const modes = { game, ana, pz };
+let mode = "game";
+const current = () => modes[mode];
+function switchMode(m, opt) {
+  if (m === mode && !opt) return;
+  current().leave();
+  mode = m;
+  for (const [id, k] of [["tab-game", "game"], ["tab-ana", "ana"], ["tab-pz", "pz"]]) document.getElementById(id).setAttribute("aria-selected", String(k === m));
+  document.getElementById("panel-game").hidden = m !== "game";
+  document.getElementById("panel-ana").hidden = m !== "ana";
+  document.getElementById("panel-pz").hidden = m !== "pz";
+  current().enter(opt);
+}
+document.getElementById("tab-game").onclick = () => switchMode("game");
+document.getElementById("tab-ana").onclick = () => switchMode("ana");
+document.getElementById("tab-pz").onclick = () => switchMode("pz");
+document.getElementById("g-pick-1").onclick = () => game.start(1);
+document.getElementById("g-pick-2").onclick = () => game.start(2);
+document.getElementById("g-new").onclick = () => game.reset();
+document.getElementById("g-undo").onclick = () => game.undo();
+document.getElementById("g-hint").onclick = () => { game.showHints = !game.showHints; if (game.showHints) say("hintOn"); game.render(); };
+document.getElementById("g-review").onclick = () => switchMode("ana", true);
+for (const b of document.getElementById("seg-level").querySelectorAll("button")) b.onclick = () => { level = b.dataset.v; store.set("turk-study-level", level); syncLevel(); current().render(); };
+function syncLevel() { for (const b of document.getElementById("seg-level").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === level)); }
+document.getElementById("g-lines").addEventListener("click", (e) => { const l = e.target.closest(".line"); if (!l || !game.st || game.st.stm !== game.human) return; game.sel = -1; game.onSquare(+l.dataset.move & 63); game.onSquare((+l.dataset.move >> 6) & 63); });
+document.getElementById("a-lines").addEventListener("click", (e) => { const l = e.target.closest(".line"); if (l) ana.play(+l.dataset.move); });
+document.getElementById("a-moves").addEventListener("click", (e) => { const b = e.target.closest("button.mv"); if (b) { ana.cur = +b.dataset.ply; ana.go(); } });
+document.getElementById("a-first").onclick = () => { ana.cur = 0; ana.go(); };
+document.getElementById("a-prev").onclick = () => { if (ana.cur > 0) { ana.cur--; ana.go(); } };
+document.getElementById("a-next").onclick = () => { if (ana.cur < ana.moves.length) { ana.cur++; ana.go(); } };
+document.getElementById("a-last").onclick = () => { ana.cur = ana.moves.length; ana.go(); };
+document.getElementById("a-best").onclick = () => { if (ana.info && ana.info.lines && ana.info.lines.length) ana.play(ana.info.lines[0].move); };
+document.getElementById("a-reset").onclick = () => { ana.moves = []; ana.cur = 0; ana.grades = {}; ana.go(); };
+for (const b of document.getElementById("seg-pz").querySelectorAll("button")) b.onclick = () => pz.load(+b.dataset.v, 0);
+document.getElementById("pz-progress").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) pz.load(pz.lvl, +b.dataset.i); });
+document.getElementById("pz-hint").onclick = () => pz.doHint();
+document.getElementById("pz-retry").onclick = () => pz.load(pz.lvl, pz.idx);
+document.getElementById("pz-next").onclick = () => {
+  const list = pz.list();
+  let i = list.findIndex((q, k) => k > pz.idx && !pz.solved.has(q.id));
+  if (i < 0) i = list.findIndex((q) => !pz.solved.has(q.id));
+  if (i < 0) i = (pz.idx + 1) % list.length;
+  pz.load(pz.lvl, i);
+};
+game.drawBoard = game.drawBoard.bind(game);
+syncLevel();
 say("pick");
+game.render();
 </script>
 </body>
 </html>
