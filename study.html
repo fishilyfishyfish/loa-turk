@@ -107,7 +107,7 @@ h1 small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 
 
 .grade { border-left: 4px solid var(--gc, var(--line)); padding-left: 10px; display: flex; flex-direction: column; gap: 3px; }
 .grade b { color: var(--gc); }
-.lines { display: flex; flex-direction: column; gap: 8px; }
+.lines { display: flex; flex-direction: column; gap: 8px; min-height: 18rem; } /* steady height while the next analysis loads */
 .line { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: var(--bg); text-align: left; font: inherit; color: inherit; }
 .line:hover { border-color: var(--accent); }
 .line .head { display: flex; align-items: center; gap: 8px; font-weight: 700; }
@@ -115,7 +115,7 @@ h1 small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 
 .line .pct { margin-left: auto; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .line ul { margin: 0; padding-left: 18px; font-size: 13px; }
 .line .pv { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.moves { font-family: var(--mono); font-size: 13px; max-height: 200px; overflow: auto; display: grid; grid-template-columns: 3.2ch minmax(0, 1fr) minmax(0, 1fr); gap: 2px 8px; font-variant-numeric: tabular-nums; }
+.moves { position: relative; font-family: var(--mono); font-size: 13px; max-height: 200px; overflow: auto; display: grid; grid-template-columns: 3.2ch minmax(0, 1fr) minmax(0, 1fr); gap: 2px 8px; font-variant-numeric: tabular-nums; }
 .moves .n { color: var(--muted); text-align: right; }
 .moves .mv { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; padding: 1px 4px; border-radius: 4px; display: flex; align-items: center; gap: 5px; }
 .moves button.mv { cursor: pointer; }
@@ -1640,7 +1640,14 @@ function movesHTML(moves, opts) {
   for (let i = 0; i < cells.length; i += 2) h += `<span class="n">${i / 2 + 1}.</span>${cells[i]}${cells[i + 1] || "<span></span>"}`;
   return h;
 }
-function scrollMoves(el) { const c = el.querySelector(".cur"); if (c) c.scrollIntoView({ block: "nearest" }); else el.scrollTop = el.scrollHeight; }
+// keep the current move visible by scrolling the move list only (scrollIntoView would also drag the whole page)
+function scrollMoves(el) {
+  const c = el.querySelector(".cur");
+  if (!c) { el.scrollTop = el.scrollHeight; return; }
+  const top = c.offsetTop, bot = top + c.offsetHeight;
+  if (top < el.scrollTop) el.scrollTop = top;
+  else if (bot > el.scrollTop + el.clientHeight) el.scrollTop = bot - el.clientHeight;
+}
 
 /* ===================== analysis loop (runs in the background worker) ===================== */
 let anaToken = 0;
