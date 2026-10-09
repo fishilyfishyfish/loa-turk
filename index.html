@@ -982,8 +982,44 @@ const TALK = {
          "비겼네. 나한테는 진 거나 마찬가지고, 너한테는 이긴 거나 마찬가지지?"],
   enginePass: ["둘 데가 없네. 이번만 넘길게.", "패스. 전략이야. 그런 걸로 해."],
   humanPass: ["둘 수가 없어? 그럼 내 차례.", "막혔네. 내가 막은 거야."],
+  chatComputer: [
+    "TMI: 원조 튀르크는 1854년 필라델피아 화재로 불탔어. 나는 파일이라 괜찮아.",
+    "1997년에 딥 블루가 카스파로프를 이겼어. 그때부터 사람한테 기대를 접었지.",
+    "옛날엔 '컴퓨터'가 손으로 계산하는 사람을 부르는 직업 이름이었어. 지금은 그 일을 내가 해.",
+    "1947년에 컴퓨터 계전기에 낀 나방을 꺼내서 작업 일지에 붙여뒀대. 진짜 '버그'였던 거지.",
+    "에이다 러브레이스가 1843년에 쓴 계산 절차가 최초의 프로그램으로 꼽혀. 그걸 돌릴 기계가 완성되기도 전에.",
+    "튜링은 체스 프로그램을 종이에 짰는데, 돌릴 컴퓨터가 없어서 직접 손으로 계산하며 뒀대. 한 수에 30분 넘게.",
+    "섀넌은 1950년에 체스의 경우의 수를 10의 120제곱 정도로 어림했어. LOA도 만만치 않아.",
+    "체커는 2007년에 완전히 풀렸어. 둘 다 완벽하게 두면 무승부래. LOA는 아직이야. 그래서 내가 있지.",
+    "2016년 서울에서 알파고가 이세돌을 4:1로 이겼어. 그 1승이 4국 78수였지.",
+    "ENIAC은 무게가 27톤쯤 됐어. 나는 파일 하나, 60킬로바이트도 안 돼.",
+    "최초의 마우스는 나무 상자에 바퀴 두 개였어. 1960년대 더글러스 엥겔바트 작품이야.",
+    "32비트 유닉스 시간은 2038년 1월 19일에 넘쳐. 그때까지 계속 이기고 있을게.",
+    "'Hello, World'는 1978년 C 언어 책 덕분에 유명해졌어. 나는 'Hello, 도전자'가 더 좋은데.",
+    "LOA 컴퓨터 대회는 MIA라는 프로그램이 10년 넘게 우승했어. 내 대선배야.",
+    "아폴로 11호 유도 컴퓨터의 쓰기 가능한 메모리는 2048워드였어. 그걸로 달에 갔어.",
+  ],
+  chatCreature: [
+    "문어는 심장이 세 개고 피가 파래. 나는 심장이 없는데도 이기지.",
+    "문어 뉴런의 3분의 2는 다리에 있대. 다리마다 따로 생각하는 셈이야.",
+    "물곰은 우주 진공에 내놨다가 데려와도 살아남았어. 너도 이 판에서 그 정도만 버텨봐.",
+    "작은보호탑해파리는 늙으면 다시 어린 상태로 돌아갈 수 있어. 너도 새 게임 누르면 그렇게 되지.",
+    "아홀로틀은 다리, 척수, 심장 일부까지 다시 만들어. 네 말 배치도 좀 다시 만들어봐.",
+    "갯가재는 물속에서 거품이 터질 만큼 빠르게 주먹을 날려. 수조 유리를 깨기도 한대.",
+    "벌거숭이두더지쥐는 산소 없이 18분을 버텼대. 너는 내 공격을 몇 수나 버틸까?",
+    "그린란드상어는 400년 가까이 산대. 그래도 이 판이 그렇게 오래 가진 않을 거야.",
+    "까마귀는 사람 얼굴을 몇 년씩 기억해. 나도 네가 둔 수 다 기억해.",
+    "웜뱃 똥은 정육면체야. 자연에서도 네모가 나오는데, 네가 이기는 건 아직 못 봤어.",
+    "해마는 수컷이 알을 품고 새끼를 낳아.",
+    "어떤 거북은 엉덩이로도 숨을 쉬어. 진짜야. 피츠로이강 거북 찾아봐.",
+    "비버 이빨이 주황색인 건 철분 때문이야. 더 단단하라고.",
+    "전기뱀장어는 사실 뱀장어가 아니고, 600볼트 넘는 전기를 내.",
+    "북극제비갈매기는 한 해에 7만 km 넘게 날아. 너는 말 몇 개 잇는 데도 한참 걸리던데.",
+    "갑오징어는 색맹으로 알려져 있는데도 주변 색에 맞춰 몸 색을 바꿔.",
+    "해달은 잘 때 떠내려가지 말라고 서로 손을 잡기도 해. LOA로 치면 연결이지.",
+  ],
 };
-let recent = [], slowTimer = 0, winTimer = 0, prevP = null, mateSaid = false, leadSaid = false, doomSaid = false;
+let recent = [], slowTimer = 0, chatTimer = 0, winTimer = 0, prevP = null, mateSaid = false, leadSaid = false, doomSaid = false;
 let humanNearSaid = false, engineNearSaid = false, longSaid = false, turnStart = 0;
 let games = 0, turkWins = 0, humanWins = 0, streak = 0; // this visit only
 const WIN = R.WIN, MATE = R.MATE_BOUND;
@@ -997,8 +1033,9 @@ function say(key, vars) {
   b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
 }
 const man = (n) => (n >= 10000 ? Math.round(n / 10000) + "만" : String(n));
+function chat() { say(Math.random() < 0.5 ? "chatComputer" : "chatCreature"); }
 function endTalk() {
-  clearTimeout(slowTimer);
+  clearTimeout(slowTimer); clearTimeout(chatTimer);
   const st = state;
   games++;
   if (!st.winner) { streak = 0; say("draw"); return; }
@@ -1031,11 +1068,15 @@ function engineTalk(m, info) {
   else if (m & 4096) say("engineCap");
   else if (!engineNearSaid && R._label(3 - human) === 2) { engineNearSaid = true; say("engineNear"); }
   else if (p > 0.85 && !leadSaid) { leadSaid = true; say("winning", { p: Math.round(p * 100) }); }
-  else if (info.depth >= 3 && Math.random() < 0.35) say("normal", { depth: info.depth, nodes: man(info.nodes) });
+  else {
+    const r = Math.random();
+    if (info.depth >= 3 && r < 0.25) say("normal", { depth: info.depth, nodes: man(info.nodes) });
+    else if (r < 0.42) chat();
+  }
   prevP = p;
 }
 function humanTalk(m, elapsed) {
-  clearTimeout(slowTimer);
+  clearTimeout(slowTimer); clearTimeout(chatTimer);
   if (state.over) { endTalk(); return; }
   if (m === PASS) say("humanPass");
   else if (m & 4096) say("humanCap");
@@ -1044,10 +1085,13 @@ function humanTalk(m, elapsed) {
   else if (!longSaid && moves.length >= 60) { longSaid = true; say("longGame"); }
 }
 function armSlowTimer() {
-  clearTimeout(slowTimer);
+  clearTimeout(slowTimer); clearTimeout(chatTimer);
   turnStart = Date.now();
+  clearTimeout(chatTimer);
   const ply = moves.length, g = gameId;
-  slowTimer = setTimeout(() => { if (g === gameId && moves.length === ply && started && !state.over && state.stm === human) say("slow"); }, 40000);
+  const still = () => g === gameId && moves.length === ply && started && !state.over && state.stm === human;
+  chatTimer = setTimeout(() => { if (still() && Math.random() < 0.6) chat(); }, 15000);
+  slowTimer = setTimeout(() => { if (still()) say("slow"); }, 40000);
 }
 
 function replay() {
@@ -1146,7 +1190,7 @@ function newGame() {
   gameId++;
   if (busy && !busy.ponder && worker) { worker.terminate(); worker = null; busy = null; } // don't wait out a 5 s think
   started = false; moves = []; sel = -1;
-  clearTimeout(slowTimer); clearTimeout(winTimer);
+  clearTimeout(slowTimer); clearTimeout(chatTimer); clearTimeout(winTimer);
   state = replay();
   say("pick");
   document.getElementById("pick").hidden = false;
