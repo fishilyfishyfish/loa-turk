@@ -1486,7 +1486,73 @@ class Brain {
   drop() { this.next = null; } // forget waiting work (callbacks guard themselves with tokens)
   kill() { if (this.w && this.busy) { this.w.terminate(); this.w = null; } this.busy = null; this.next = null; }
 }
-const playBrain = new Brain(20), anaBrain = new Brain(19);
+const playBrain = new Brain(20);
+
+// Continuous analysis: one search per position, reporting each finished depth, with no time limit.
+// A search inside a worker can't be interrupted, so a new position replaces the worker (a spare is kept warm).
+const STREAM_SRC = LoaEngine.toString() + `
+const E = LoaEngine({ ttBits: 19 });
+E.setWeights(${JSON.stringify(TUNED_WEIGHTS)});
+onmessage = function (e) {
+  const d = e.data;
+  if (d.base) E.setPosition(d.base.arr, d.base.side); else E.setStart();
+  for (const m of d.moves) E.play(m);
+  const info = E.think({ multi: 3, keepHistory: true, onInfo: (i) => postMessage({ id: d.id, info: i }) });
+  postMessage({ id: d.id, info, done: true });
+};`;
+class Analyzer {
+  constructor() { this.w = null; this.spare = null; this.job = null; this.paused = null; this.id = 0; this.broken = false; this.E = null; }
+  make() {
+    if (this.broken) return null;
+    try {
+      const w = new Worker(URL.createObjectURL(new Blob([STREAM_SRC], { type: "text/javascript" })));
+      w.onmessage = (e) => this.msg(e.data);
+      w.onerror = () => this.fail();
+      return w;
+    } catch (e) { this.broken = true; return null; }
+  }
+  start(req, cb) { // cb(info, done)
+    this.halt(); this.paused = null;
+    const job = { id: ++this.id, req, cb, done: false };
+    this.job = job;
+    if (!this.w) { this.w = this.spare || this.make(); this.spare = null; }
+    if (this.w) this.w.postMessage({ id: job.id, base: req.base || null, moves: req.moves });
+    else this.local(job);
+  }
+  halt() { // drop the current job; a busy worker is thrown away
+    const busy = this.job && !this.job.done;
+    this.job = null;
+    if (busy && this.w) { this.w.terminate(); this.w = null; if (!this.spare) this.spare = this.make(); }
+  }
+  stop() { this.paused = null; this.halt(); }
+  pause() { const j = this.job; if (j && !j.done) { this.halt(); this.paused = j; } }
+  resume() { const j = this.paused; this.paused = null; if (j && !this.job) this.start(j.req, j.cb); }
+  msg(d) {
+    const j = this.job;
+    if (!j || d.id !== j.id) return;
+    if (d.done) j.done = true;
+    j.cb(d.info, !!d.done);
+  }
+  fail() {
+    this.broken = true; this.w = null; this.spare = null;
+    const j = this.job; this.job = null;
+    if (j && !j.done) this.start(j.req, j.cb);
+  }
+  local(job) { // no workers: one bounded search on the page
+    setTimeout(() => {
+      if (this.job !== job) return;
+      if (!this.E) { this.E = LoaEngine({ ttBits: 16 }); this.E.setWeights(TUNED_WEIGHTS); }
+      const E = this.E, r = job.req;
+      if (r.base) E.setPosition(r.base.arr, r.base.side); else E.setStart();
+      for (const m of r.moves) E.play(m);
+      const info = E.think({ time: 1500, multi: 3, keepHistory: true });
+      if (this.job !== job) return;
+      job.done = true; job.cb(info, true);
+    }, 20);
+  }
+}
+const analyzer = new Analyzer();
+document.addEventListener("visibilitychange", () => { if (document.hidden) analyzer.pause(); else analyzer.resume(); });
 
 /* ===================== Turk talks ===================== */
 const STUDY_TALK = {
@@ -1671,20 +1737,21 @@ function scrollMoves(el) {
 
 /* ===================== analysis loop (runs in the background worker) ===================== */
 let anaToken = 0;
-// repeatedly analyse one position in short slices (each slice reuses what the last one learned)
-function analyze(base, moves, maxMs, onInfo) {
+// analyse one position until it changes; onInfo(info) runs each time a deeper search finishes.
+// info.done is set when the search ended by itself (a forced result was found).
+function analyze(base, moves, onInfo) {
   const token = ++anaToken;
-  anaBrain.drop();
-  let spent = 0;
-  const step = () => anaBrain.run({ base, moves: moves.slice(), time: 1000, multi: 3 }, (info) => {
-    onInfo(info, token === anaToken);
+  let last = null;
+  analyzer.start({ base, moves: moves.slice() }, (info, done) => {
     if (token !== anaToken) return;
-    spent += info.ms;
-    if (spent < maxMs && info.lines && info.lines.length && Math.abs(info.lines[0].score) < MATE) step();
+    // after the tab was hidden the search starts over: keep the deeper result on screen meanwhile
+    if (last && info.depth < last.depth) { if (!done) return; info = last; }
+    info.done = done; last = info;
+    onInfo(info);
   });
-  step();
 }
-function stopAnalysis() { anaToken++; anaBrain.drop(); }
+function stopAnalysis() { anaToken++; analyzer.stop(); }
+const depthText = (info) => info ? `${info.depth}수 앞까지 읽음${info.done ? "" : " · 계속 읽는 중"}` : "";
 
 /* ===================== mode: game ===================== */
 const game = {
@@ -1727,10 +1794,10 @@ const game = {
       const ply = this.moves.length;
       clearTimeout(this.chatTimer);
       this.chatTimer = setTimeout(() => { if (tok === this.token && this.moves.length === ply) chat(); }, 20000);
-      analyze(null, this.moves, 15000, (info, live) => {
+      analyze(null, this.moves, (info) => {
+        if (tok !== this.token || this.moves.length !== ply) return;
         this.anaByPly[ply] = info;
-        this.tryGrade(ply);
-        if (live && current() === this) { this.renderHints(); setEval(this.human === 1 ? winProb(info.score) : 1 - winProb(info.score)); }
+        if (current() === this) { this.renderHints(); setEval(this.human === 1 ? winProb(info.score) : 1 - winProb(info.score)); }
       });
     }
     this.render();
@@ -1812,7 +1879,7 @@ const game = {
     const info = this.anaByPly[this.moves.length];
     replay(null, this.moves); // R must sit on this position for the explanations
     document.getElementById("g-lines").innerHTML = linesHTML(info, this.human);
-    document.getElementById("g-hints-depth").textContent = info ? `${info.depth}수 앞까지 읽음` : "";
+    document.getElementById("g-hints-depth").textContent = depthText(info);
     this.drawBoard();
   },
   hintsOnBoard() {
@@ -1887,8 +1954,8 @@ const ana = {
     this.render();
     if (st.over) { stopAnalysis(); setEval(st.winner === 1 ? 1 : st.winner === 2 ? 0 : 0.5); return; }
     const key = mv.join(","); this.key = key;
-    analyze(null, mv, 8000, (info, live) => {
-      if (!live || this.key !== key || current() !== this) return;
+    analyze(null, mv, (info) => {
+      if (this.key !== key || current() !== this) return;
       this.info = info;
       setEval(st.stm === 1 ? winProb(info.score) : 1 - winProb(info.score));
       this.render();
@@ -1919,7 +1986,7 @@ const ana = {
     const s = document.getElementById("a-status");
     if (st.over) s.innerHTML = st.winner ? `<span class="chip ${st.winner === 1 ? "b" : "w"}"></span>${sideName(st.winner)} 승리` : "무승부";
     else s.innerHTML = `<span class="chip ${st.stm === 1 ? "b" : "w"}"></span>${sideName(st.stm)} 차례 · ${this.cur}수째`;
-    document.getElementById("a-depth").textContent = this.info ? `${this.info.depth}수 앞까지 읽음` : "";
+    document.getElementById("a-depth").textContent = st.over ? "" : depthText(this.info);
     document.getElementById("a-lines").innerHTML = st.over ? `<div class="note">끝난 국면이야.</div>` : linesHTML(this.info, st.stm);
     document.getElementById("a-moves").innerHTML = movesHTML(this.moves, { grades: this.grades, clickable: true, cur: this.cur });
     scrollMoves(document.getElementById("a-moves"));
@@ -1996,7 +2063,7 @@ const pz = {
     if (this.moves.length === 0) { this.hintMove = p.sol[0]; say(this.hint === 1 ? "pzHint" : "pzHint2"); this.render(); return; }
     // later steps: ask Turk for the attacking move
     const tok = this.token; const h = this.hint;
-    anaBrain.run({ base: this.base, moves: this.moves.slice(), time: 600, multi: 0 }, (info) => {
+    playBrain.run({ base: this.base, moves: this.moves.slice(), time: 600 }, (info) => {
       if (tok !== this.token) return;
       this.hintMove = info.move; say(h === 1 ? "pzHint" : "pzHint2"); this.render();
     });
