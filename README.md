@@ -1,6 +1,6 @@
 # LOA 튀르크
 
-*A Lines of Action board game against **Turk**, a game-tree search engine written in plain JavaScript (alpha-beta search in a Web Worker, evaluation tuned by self-play). Play it at https://turk.js.org*
+*A Lines of Action board game against **Turk**, a game-tree search engine written in plain JavaScript (alpha-beta search in a Web Worker, evaluation tuned by self-play). Play it at https://fishilyfishyfish.github.io/loa-turk/*
 
 Lines of Action 엔진 **튀르크**와 두는 웹 게임. `index.html` 파일 하나로 돌아간다. 설치할 것 없이 브라우저로 열면 된다.
 
