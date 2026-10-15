@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>튀르크 학습판</title>
 <style>
-/* Layout: mode tabs and Turk's bubble on top; board with an evaluation bar on the left, the coaching panel on the right */
+/* Layout: mode tabs on top; board with an evaluation bar on the left, the coaching panel on the right */
 :root {
   --bg: #e8ebe5;
   --surface: #f7f8f4;
@@ -44,18 +44,10 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); font-
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
 h1 small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; }
-h1 { user-select: none; -webkit-user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
 .tabs button { font: inherit; font-weight: 600; border: 0; background: transparent; color: var(--muted); padding: 7px 16px; border-radius: 999px; cursor: pointer; }
 .tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
 .tabs button:focus-visible, .btn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-.say { min-height: 52px; display: flex; align-items: flex-end; }
-.bubble { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 9px 14px; font-weight: 500; line-height: 1.45; box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .5); max-width: 100%; }
-.bubble::after { content: ""; position: absolute; left: 24px; bottom: -7px; width: 12px; height: 12px; background: var(--surface); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
-.bubble .who { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 8px; letter-spacing: .04em; }
-@media (prefers-reduced-motion: no-preference) { .bubble.pop { animation: pop .28s cubic-bezier(.2, .9, .3, 1.3); } }
-@keyframes pop { from { transform: translateY(6px) scale(.96); opacity: .3; } }
 
 .play { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: start; }
 @media (max-width: 900px) { .play { grid-template-columns: minmax(0, 1fr); } }
@@ -138,7 +130,6 @@ details summary { cursor: pointer; font-weight: 600; }
 .alt { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 4px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
 .alt:hover { border-color: var(--accent); }
 .alt .pct { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-.tabs .secret[aria-selected="false"] { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -149,10 +140,9 @@ details summary { cursor: pointer; font-weight: 600; }
       <button type="button" role="tab" id="tab-game" aria-selected="true">대국</button>
       <button type="button" role="tab" id="tab-ana" aria-selected="false">분석</button>
       <button type="button" role="tab" id="tab-pz" aria-selected="false">퍼즐</button>
-      <button type="button" role="tab" id="tab-note" class="secret" aria-selected="false" hidden>비밀노트</button>
+      <button type="button" role="tab" id="tab-note" aria-selected="false">초반 노트</button>
     </nav>
   </div>
-  <div class="say" aria-live="polite"><div class="bubble" id="bubble"><span class="who">튀르크</span><span id="say-text"></span></div></div>
 
   <section class="play">
     <div class="board-area">
@@ -249,7 +239,7 @@ details summary { cursor: pointer; font-weight: 600; }
         </details>
       </div>
 
-      <!-- ============ 비밀노트 (easter egg: tap the title five times) ============ -->
+      <!-- ============ 초반 노트 ============ -->
       <div id="panel-note" class="panel" hidden>
         <div class="card">
           <div class="row">
@@ -999,7 +989,12 @@ function LoaEngine(opts) {
     else for (let i = 0; i < HISTO.length; i++) HISTO[i] >>= 2;
 
     const root = new Int32Array(256);
-    const n = genMoves(stm, root, 0);
+    let n = genMoves(stm, root, 0);
+    if (cfg.avoid && cfg.avoid.length) { // leave these root moves out (unless nothing else is left)
+      let k = 0;
+      for (let i = 0; i < n; i++) if (!cfg.avoid.includes(root[i])) root[k++] = root[i];
+      if (k) n = k;
+    }
     const info = { move: -1, score: 0, depth: 0, pv: [], nodes: 0, ms: 0, sel: 0, side: stm, iters: [] };
     if (n === 0) { info.move = PASS; info.ms = Date.now() - t0; return info; }
     // immediate wins
@@ -1120,6 +1115,46 @@ function LoaEngine(opts) {
     return res;
   }
 
+  // ---- human-like play for the weaker levels ----
+  // Reads only cfg.depth plies, overlooks some quiet moves, judges with noise, likes captures a little,
+  // and on some turns misses its own immediate connection or the opponent's (cfg.missWin / cfg.blind).
+  function thinkHuman(cfg) {
+    const t0 = Date.now(), side = stm, op = 3 - side, rand = cfg.rand || Math.random;
+    P = Object.assign({}, DEFAULTS); useMobility = P.mobility; evalMode = P.evalMode;
+    const root = new Int32Array(256), n = genMoves(side, root, 0);
+    if (n === 0) return { move: PASS, score: 0, depth: 0, pv: [], nodes: 0, ms: 0, side };
+    const wins = [], facts = new Map();
+    for (let i = 0; i < n; i++) {
+      const m = root[i];
+      make(m);
+      const r = resultAfter(side, (m & 4096) !== 0);
+      if (r === 1) wins.push(m);
+      // what the move looks like at a glance: the position right after it, without the opponent's reply
+      else facts.set(m, { allowsWin: r === 0 && canWinNow(op), glance: r === 0 ? -evaluate() : r === 2 ? 0 : -WIN + 1 });
+      unmake(m);
+    }
+    if (wins.length && (rand() >= (cfg.missWin || 0) || wins.length === n))
+      return { move: wins[0], score: WIN - 1, depth: 1, pv: [wins[0]], nodes: 0, ms: Date.now() - t0, side };
+    const blind = rand() < (cfg.blind || 0); // this turn the opponent's next-move connection goes unseen
+    const info = think({ depth: cfg.depth || 1, time: cfg.time || 3000, soft: 1, multi: 256, keepHistory: true, avoid: wins });
+    const lines = info.lines && info.lines.length ? info.lines : [{ move: info.move, score: info.score, pv: [info.move] }];
+    const prob = (s) => (s >= MATE_BOUND ? 1 : s <= -MATE_BOUND ? 0 : 1 / (1 + Math.exp(-s / 300)));
+    const gauss = () => { let u = 0; while (!u) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
+    let pick = null, pickV = -Infinity;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i], f = facts.get(l.move);
+      // quiet moves sometimes never get looked at; captures always catch the eye
+      if (i > 0 && !(l.move & 4096) && rand() < (cfg.overlook || 0)) continue;
+      let v = blind && f && f.allowsWin ? prob(f.glance) : prob(l.score);
+      if (l.move & 4096) v += cfg.capBias || 0;
+      v += gauss() * (cfg.noise || 0);
+      if (v > pickV) { pickV = v; pick = l; }
+    }
+    if (!pick) pick = lines[0];
+    return { move: pick.move, score: lines[0].score, depth: info.depth, pv: pick.pv, nodes: info.nodes, ms: Date.now() - t0, side,
+             chosen: pick.score, best: lines[0].move };
+  }
+
   // ---- plain-language facts about one move (for explanations) ----
   function concOf(side) {
     const n = pcount[side], pl = plist[side];
@@ -1195,7 +1230,7 @@ function LoaEngine(opts) {
     WIN, MATE_BOUND, PASS, NF, FEAT_NAMES,
     startArray, setPosition,
     setStart() { setPosition(startArray(), 1); },
-    play, legalMoves, snapshot, think, evaluate: () => { P = Object.assign({}, DEFAULTS); return evaluate(); },
+    play, legalMoves, snapshot, think, thinkHuman, evaluate: () => { P = Object.assign({}, DEFAULTS); return evaluate(); },
     resultAfter, connected, canWinNow, featureVector, sideFeatures, setWeights, describe,
     getWeights: () => ({ WO: Array.from(WO), WE: Array.from(WE), TEMPO_O, TEMPO_E }),
     setParams(p) { P = Object.assign({}, DEFAULTS, p || {}); useMobility = P.mobility; evalMode = P.evalMode; },
@@ -1215,227 +1250,6 @@ function LoaEngine(opts) {
 <script>
 const TUNED_WEIGHTS = {"WO": [89.737, 149.847, 185.339, 169.995, 194.812, 242.639, 255.31, 192.251, 226.532, 212.064, -35.407, 444.782, 26.218, -20.638, -8.095, -15.068, -1.352, 128.492, 0.0, 0.0, 0.0, 1.309, -24.138, -6.367], "WE": [-22.052, -73.962, 82.505, 124.591, 120.61, 174.463, 236.87, 329.321, 341.43, 397.136, -101.975, -123.728, -275.281, 49.802, 84.557, -45.242, -4.577, 304.686, 0.0, 0.0, 0.0, 25.145, 20.757, 12.19], "TEMPO_O": 56.233, "TEMPO_E": 205.451};
 const PUZZLES = {"1":[{"id":"1-1","n":1,"side":2,"b":"0000100000000010010000000000112200202012000002210022000201010001","sol":[2786]},{"id":"1-2","n":1,"side":2,"b":"1000000100000000000022100000202022201000002220000002100200011100","sol":[2423]},{"id":"1-3","n":1,"side":2,"b":"0012210000200200012010100000201002210000002001000000000000010001","sol":[1692]},{"id":"1-4","n":1,"side":2,"b":"0000110000102200000011010100022000202000000220200001001001000000","sol":[1454]},{"id":"1-5","n":1,"side":2,"b":"0000010000020000022100002000200020202010200002000000120001001010","sol":[1762]},{"id":"1-6","n":1,"side":2,"b":"0000000000200200020022020012121000000201100020000000100000100100","sol":[1239]},{"id":"1-7","n":1,"side":2,"b":"0000100022022000210121012020000020001000010000000000010000000010","sol":[1178]},{"id":"1-8","n":1,"side":2,"b":"0001000000000022000200100020210000020212012101000000000110000000","sol":[1383]},{"id":"1-9","n":1,"side":1,"b":"0001010000000002000011120010010200001200020210000200002000000000","sol":[794]},{"id":"1-10","n":1,"side":1,"b":"0010010020001000000012120200000200000210000200100000000202000000","sol":[1858]},{"id":"1-11","n":1,"side":1,"b":"0100020000000200000100002010101020002000002002102000010000000200","sol":[2369]},{"id":"1-12","n":1,"side":2,"b":"0000000000000000000010020010120200020210000012120000200000001100","sol":[6563]},{"id":"1-13","n":1,"side":2,"b":"0000000000200000002020002001100011002000000200100000210000100110","sol":[5848]},{"id":"1-14","n":1,"side":1,"b":"0000000000000000122200000001000022011000002200000110100000000000","sol":[6864]},{"id":"1-15","n":1,"side":1,"b":"0000000000020000210020000200100000100000010212020020000000000200","sol":[2257]},{"id":"1-16","n":1,"side":1,"b":"0002000000002200000011100000201000200000000010100000002000100000","sol":[2426]},{"id":"1-17","n":1,"side":1,"b":"0000000000000000000000000000000002110000002102200022001000121000","sol":[7414]},{"id":"1-18","n":1,"side":1,"b":"0101100000000000000102000002000000002002000002100220000200000000","sol":[686]},{"id":"1-19","n":1,"side":1,"b":"0000000020000200000002100210020000001010200110000000100000000000","sol":[5978]},{"id":"1-20","n":1,"side":1,"b":"0000000000020100011002000011020000000000010100000020000000000200","sol":[2189]}],"2":[{"id":"2-1","n":2,"side":1,"b":"0101110000001100001000120010000000000002200200120022200000000202","sol":[652]},{"id":"2-2","n":2,"side":1,"b":"0021110000002200000200102020011020020001200201002000000000001000","sol":[4973]},{"id":"2-3","n":2,"side":1,"b":"0001000120000200210100001102022001011220021000000000000000000200","sol":[1799]},{"id":"2-4","n":2,"side":2,"b":"0000000002011020010010000020020001012020010200020000220000101100","sol":[1737]},{"id":"2-5","n":2,"side":2,"b":"0100100000000210000000000000112000202012000002210022000201010001","sol":[2786]},{"id":"2-6","n":2,"side":2,"b":"0000000010002000022000110120111000020200220200100020120000000000","sol":[2856]},{"id":"2-7","n":2,"side":2,"b":"0111010000020200000020000012121200010002000002020000001000000200","sol":[7579]},{"id":"2-8","n":2,"side":2,"b":"2001000000002000200011012200201000200200220002001000010000000001","sol":[1728]},{"id":"2-9","n":2,"side":2,"b":"0001100000000000000000112022020000220000011000000002220000100210","sol":[2781]},{"id":"2-10","n":2,"side":2,"b":"0000000000000020001100020011200000001202002120120000000000111000","sol":[1386]},{"id":"2-11","n":2,"side":1,"b":"0000120000102000200021000011010000012000000110000002020200000000","sol":[1802]},{"id":"2-12","n":2,"side":2,"b":"0000100000000210100100020122020000200000000010000002220001001100","sol":[1303]},{"id":"2-13","n":2,"side":1,"b":"0020000000020000000021020012121002000110010100000000001000000000","sol":[2358]},{"id":"2-14","n":2,"side":1,"b":"0000000000000000001001010012122000200100002101020000000000010000","sol":[2299]},{"id":"2-15","n":2,"side":2,"b":"0020000000002200011020000000000000120200001100000010210000010000","sol":[1844]},{"id":"2-16","n":2,"side":1,"b":"0000000020110100210200000101000000000010100200002000200000000000","sol":[1704]},{"id":"2-17","n":2,"side":1,"b":"0000000102000000010100000000210200012010000220020000200000000000","sol":[5895]},{"id":"2-18","n":2,"side":1,"b":"0020000000200201001010002010010000020000000101000000020000000020","sol":[2319]},{"id":"2-19","n":2,"side":2,"b":"0000100000001000000200000002120000010020020020000002000002000010","sol":[2342]},{"id":"2-20","n":2,"side":1,"b":"0002000000012100000000000000110000022200000001010000020000000000","sol":[2443]}],"3":[{"id":"3-1","n":3,"side":1,"b":"0011000000000020200010102000010021000100000110122000020200020100","sol":[2237]},{"id":"3-2","n":3,"side":1,"b":"0111010020102000010000200100010201010000000000020000022000000022","sol":[4897]},{"id":"3-3","n":3,"side":1,"b":"0000010000002000000100120210011200200110210000100000002020000000","sol":[2857]},{"id":"3-4","n":3,"side":1,"b":"2011121020102000202000100000010000000112000000002000000000010000","sol":[2939]},{"id":"3-5","n":3,"side":2,"b":"0200000000000000002220010001220000200220212100010000000000100010","sol":[2278]},{"id":"3-6","n":3,"side":1,"b":"0000100000000000200210000010010002102002001010020001000000210100","sol":[6404]},{"id":"3-7","n":3,"side":1,"b":"0210110000000002010110020200122200000100000000000020000000020000","sol":[5957]},{"id":"3-8","n":3,"side":1,"b":"0002000000000020200001000010100000020010200221112000001000001000","sol":[2389]},{"id":"3-9","n":3,"side":2,"b":"0000000000000010002100020000220000012200002120201000200000100000","sol":[1757]},{"id":"3-10","n":3,"side":2,"b":"0000000000001000002002000020220200010001200010000000000000111000","sol":[1256]},{"id":"3-11","n":3,"side":2,"b":"0010000000000000000100021000000000000000010022020100020200202002","sol":[3503]},{"id":"3-12","n":3,"side":2,"b":"0001000000001000000000001000120200001100001202000020020000000010","sol":[2461]},{"id":"3-13","n":3,"side":2,"b":"0000020000200000001021000002000000010010002000110000010000100000","sol":[714]},{"id":"3-14","n":3,"side":2,"b":"0000000000000000000010200000000100010200000000000021220011010100","sol":[2774]}]};
-const TALK = {
-  pick: ["선공이든 후공이든 골라. 결과는 같으니까.", "어느 쪽 할래? 어느 쪽이 질지는 이미 알지만.",
-         "안에 사람 숨어 있는 거 아니야. 이번 튀르크는 진짜 기계거든.", "흑 할래, 백 할래? 고민하는 시간도 아깝다.",
-         "준비됐으면 골라. 나는 1770년부터 준비돼 있었어."],
-  startHumanBlack: ["먼저 둬. 핸디캡이라고 생각해.", "선공 줄게. 그 정도는 해줘야 재밌지.", "천천히 둬. 나는 5초면 돼.",
-                    "첫 수부터 실수하지 마. 재미없어지니까.", "선공이 유리하대. 너한테는 별 상관 없겠지만."],
-  startEngineBlack: ["내가 먼저 간다. 따라올 수 있으면 따라와.", "선공은 내가 할게. 너한테 줘봤자 아까워서.",
-                     "후공 골랐네. 지는 데 시간 좀 더 걸리겠다.", "좋아, 첫 수는 서비스로 빨리 둬줄게."],
-  rematch: ["또 왔네. 지금 나 {w}승, 너 {l}승.", "한 판 더? 스코어 {w}:{l}. 앞이 나야.", "복수하러 왔구나. 현재 나 {w}, 너 {l}."],
-  streak: ["{k}연승 중이야. 늘려줘서 고마워.", "{k}연승. 오늘 컨디션 좋네, 나.", "{k}연승째 도전. 응원해줘서 고마워."],
-  normal: ["음, 예상대로네.", "네 다음 수도 이미 읽어놨어.", "{depth}수 앞까지 봤는데 네가 이기는 길은 없더라.",
-           "국면 {nodes} 개 봤어. 너는 몇 개 봤어?", "지금 몇 수 앞 보고 있어? 나는 {depth}수.", "그 정도는 5초도 안 걸려.",
-           "흥미롭네. 아니, 사실 별로.", "방금 그 수, 내 후보 목록엔 없었어. 좋은 뜻 아니야.",
-           "이 판 기보는 교재로 써도 되겠다. 반면교사로.", "계속 그렇게 둬. 나 편하게."],
-  blunder: ["그 수 진심이야?", "고마워. 방금 그거 선물 맞지?", "와, 그건 나도 생각 못 했다. 너무 나빠서.",
-            "한 번만 못 본 걸로 해줄게. 아, 무르기가 없네.", "방금 내 승률이 {d}%p 올랐어.",
-            "손이 미끄러진 거지? 그렇다고 해줄게.", "그거 함정이야? 함정이면 너무 티 나고, 아니면 더 슬프다."],
-  goodMove: ["오, 그건 좀 괜찮네.", "인정할 건 인정하지. 좋은 수야.", "어디서 배웠어? 아무튼 거기까지야.", "잠깐 긴장했어. 잠깐."],
-  engineCap: ["냠.", "그 말은 내가 가져갈게.", "잡았다. 원래 잘 안 잡는데 너무 무방비라서.", "자리 비켜. 거기 내 자리야.",
-              "하나 줄었네. 네 말이.", "통행료 받아 간다."],
-  humanCap: ["잡아줘서 고마워. 말이 줄면 잇기 더 쉬워지거든.", "LOA에서 잡는 게 좋은 수인 줄 알았지?",
-             "하나 줄었네. 덕분에 덜 걸어도 되겠다.", "아야. 거짓말이고, 오히려 좋아.", "잡는 맛은 있지? 그게 다야."],
-  humanNear: ["덩어리 두 개 남았네. 거기서부터가 어렵지.", "거의 다 왔다고 생각하지? 마지막 한 칸이 제일 멀어."],
-  engineNear: ["나 이제 두 덩어리. 슬슬 끝낼게.", "거의 다 이었다. 막을 거면 지금 막아."],
-  winning: ["슬슬 항복 버튼 찾아봐. 아, 없지.", "내 계산으로 내 승률 {p}%. 반올림하면 100.", "이제 몇 수 남았는지 세는 중이야.",
-            "여기서 뒤집으면 내가 기계 그만둔다."],
-  mate: ["{n}수 안에 끝나. 미리 말해주는 거야.", "체크메이트 말고 커넥트메이트. {n}수 남았어.", "뭘 둬도 {n}수야. 편하게 둬.",
-         "스포일러: {n}수 뒤에 내가 이겨."],
-  mateCount: ["{n}수 남았다.", "카운트다운 {n}.", "이제 {n}수.", "{n}. 숫자 세는 거 들려?"],
-  doomed: ["잠깐, 이거 내가 지는 수순인데?", "계산이 틀렸을 거야. 아마도.", "어... 다시 계산해 볼게. 계속 같은 답이 나오네.",
-           "이건 테스트 모드야. 진짜 실력 아니야."],
-  slow: ["자는 거 아니지?", "오래 생각한다고 답이 바뀌진 않아.", "그동안 나도 계속 읽고 있었어. 미리 생각 켜져 있거든.",
-         "체스 시계 있었으면 넌 벌써 졌어.", "천천히 해. 어차피 결과는 같아."],
-  fast: ["생각은 하고 둔 거지?", "빠르네. 좋은 쪽으로 빠른지는 모르겠다.", "급할 거 없어. 지는 건 안 도망가."],
-  longGame: ["아직도 하고 있어? 끈기는 인정.", "이렇게 오래 버틴 사람 오랜만이야. 그래도 결과는 같아."],
-  engineWin: ["{n}수 만에 끝. 생각보다 빨랐네.", "나는 다 이었는데 너는 아직 {g}덩어리네.", "GG. 다음엔 좀 버텨봐.",
-              "이게 최선이었어? 진짜로?", "5초씩 생각해줬는데 그것도 아깝다.", "연습 상대 필요하면 말해. 아, 방금 했구나.",
-              "켐펠렌이 봤으면 울었겠다. 기뻐서.", "또 하나의 승리. 지루할 정도야."],
-  engineWin2: ["새 게임 버튼은 아래 있어. 결과는 같겠지만.", "한 판 더? 겁나면 안 해도 돼.", "기보 저장해 둬. 지는 법 교재로 쓰게.",
-               "괜찮아. 사람이 원래 그래.", "나폴레옹도 졌어. 너무 기죽지 마.", "다음 판엔 세 수 더 버티는 걸 목표로 해봐."],
-  humanWin: ["...방금 건 버그야. 새 게임 눌러.", "봐준 거야. 진짜로.", "인정. 근데 다음 판은 진심으로 한다.",
-             "배터리가 부족했어. 그래서 그래.", "이건 기록에 안 남는 연습 경기였어.", "상자 안에 사람 숨겨놨지? 나 다 알아."],
-  humanWin2: ["...한 판 더 해. 이번엔 진짜야.", "스크린샷 찍었으면 지워줘.", "이 얘기 아무한테도 하지 마."],
-  draw: ["무승부. 비긴 걸 이긴 걸로 치고 싶겠지.", "오늘은 여기까지 봐줄게.",
-         "비겼네. 나한테는 진 거나 마찬가지고, 너한테는 이긴 거나 마찬가지지?"],
-  enginePass: ["둘 데가 없네. 이번만 넘길게.", "패스. 전략이야. 그런 걸로 해."],
-  humanPass: ["둘 수가 없어? 그럼 내 차례.", "막혔네. 내가 막은 거야."],
-  chatComputer: [
-    "TMI: 원조 튀르크는 1854년 필라델피아 화재로 불탔어. 나는 파일이라 괜찮아.",
-    "1997년에 딥 블루가 카스파로프를 이겼어. 그때부터 사람한테 기대를 접었지.",
-    "옛날엔 '컴퓨터'가 손으로 계산하는 사람을 부르는 직업 이름이었어. 지금은 그 일을 내가 해.",
-    "1947년에 컴퓨터 계전기에 낀 나방을 꺼내서 작업 일지에 붙여뒀대. 진짜 '버그'였던 거지.",
-    "에이다 러브레이스가 1843년에 쓴 계산 절차가 최초의 프로그램으로 꼽혀. 그걸 돌릴 기계가 완성되기도 전에.",
-    "튜링은 체스 프로그램을 종이에 짰는데, 돌릴 컴퓨터가 없어서 직접 손으로 계산하며 뒀대. 한 수에 30분 넘게.",
-    "섀넌은 1950년에 체스의 경우의 수를 10의 120제곱 정도로 어림했어. LOA도 만만치 않아.",
-    "체커는 2007년에 완전히 풀렸어. 둘 다 완벽하게 두면 무승부래. LOA는 아직이야. 그래서 내가 있지.",
-    "2016년 서울에서 알파고가 이세돌을 4:1로 이겼어. 그 1승이 4국 78수였지.",
-    "ENIAC은 무게가 27톤쯤 됐어. 나는 사진 한 장보다 작은 파일 하나야.",
-    "최초의 마우스는 나무 상자에 바퀴 두 개였어. 1960년대 더글러스 엥겔바트 작품이야.",
-    "32비트 유닉스 시간은 2038년 1월 19일에 넘쳐. 그때까지 계속 이기고 있을게.",
-    "'Hello, World'는 1978년 C 언어 책 덕분에 유명해졌어. 나는 'Hello, 도전자'가 더 좋은데.",
-    "LOA 컴퓨터 대회는 MIA라는 프로그램이 10년 넘게 우승했어. 내 대선배야.",
-    "아폴로 11호 유도 컴퓨터의 쓰기 가능한 메모리는 2048워드였어. 그걸로 달에 갔어.",
-    "최초의 웹사이트는 1991년 CERN에서 팀 버너스리가 만들었어. 지금도 들어가 볼 수 있어.",
-    "'스팸'이란 말은 몬티 파이선 콩트에서 '스팸'을 끝없이 외치는 장면에서 왔어.",
-    "QWERTY 자판은 1870년대 타자기 시절 배열이야. 150년째 그대로 쓰는 중이지.",
-    "이메일 주소에 @를 처음 쓴 사람은 1971년 레이 톰린슨이야.",
-    "1956년 IBM 첫 하드디스크 용량은 3.75MB였어. 이 게임 파일이 수십 개 들어가.",
-    "웃는 얼굴 이모티콘 :-) 은 1982년 스콧 팔먼이 처음 제안했어.",
-  ],
-  chatCreature: [
-    "문어는 심장이 세 개고 피가 파래. 나는 심장이 없는데도 이기지.",
-    "문어 뉴런의 3분의 2는 다리에 있대. 다리마다 따로 생각하는 셈이야.",
-    "물곰은 우주 진공에 내놨다가 데려와도 살아남았어. 너도 이 판에서 그 정도만 버텨봐.",
-    "작은보호탑해파리는 늙으면 다시 어린 상태로 돌아갈 수 있어. 너도 새 게임 누르면 그렇게 되지.",
-    "아홀로틀은 다리, 척수, 심장 일부까지 다시 만들어. 네 말 배치도 좀 다시 만들어봐.",
-    "갯가재는 물속에서 거품이 터질 만큼 빠르게 주먹을 날려. 수조 유리를 깨기도 한대.",
-    "벌거숭이두더지쥐는 산소 없이 18분을 버텼대. 너는 내 공격을 몇 수나 버틸까?",
-    "그린란드상어는 400년 가까이 산대. 그래도 이 판이 그렇게 오래 가진 않을 거야.",
-    "까마귀는 사람 얼굴을 몇 년씩 기억해. 나도 네가 둔 수 다 기억해.",
-    "웜뱃 똥은 정육면체야. 자연에서도 네모가 나오는데, 네가 이기는 건 아직 못 봤어.",
-    "해마는 수컷이 알을 품고 새끼를 낳아.",
-    "어떤 거북은 엉덩이로도 숨을 쉬어. 진짜야. 피츠로이강 거북 찾아봐.",
-    "비버 이빨이 주황색인 건 철분 때문이야. 더 단단하라고.",
-    "전기뱀장어는 사실 뱀장어가 아니고, 600볼트 넘는 전기를 내.",
-    "북극제비갈매기는 한 해에 7만 km 넘게 날아. 너는 말 몇 개 잇는 데도 한참 걸리던데.",
-    "갑오징어는 색맹으로 알려져 있는데도 주변 색에 맞춰 몸 색을 바꿔.",
-    "해달은 잘 때 떠내려가지 말라고 서로 손을 잡기도 해. LOA로 치면 연결이지.",
-    "판다는 하루에 10시간 넘게 대나무를 먹어. 너 이 판 고민하는 것보다 길다.",
-    "다 자란 코끼리는 점프를 못 해.",
-    "벌새는 뒤로도 날 수 있어.",
-    "상어는 나무보다 먼저 지구에 있었어. 공룡보다도 훨씬 먼저.",
-    "홍학은 회색으로 태어나. 먹이 속 색소 때문에 분홍색이 되는 거야.",
-    "바다거북은 태어난 해변으로 돌아와 알을 낳아. 지구 자기장을 지도처럼 쓴대.",
-    "개미를 다 모으면 야생 새와 포유류를 합친 것보다 무거울 거래.",
-    "나무늘보는 너무 느려서 털에 조류가 자라. 그래서 초록빛이 돌아.",
-  ],
-  chatGames: [
-    "체스는 양쪽이 한 수씩만 둬도 나올 수 있는 국면이 400가지야.",
-    "공식 체스 대국 최장 기록은 269수, 20시간 넘게 둬서 무승부였대. 우리는 그렇게까지 안 가.",
-    "바둑의 가능한 국면 수는 10의 170제곱 정도래. 2016년에 정확히 셌어.",
-    "루빅스 큐브는 어떤 상태든 20번 안에 맞출 수 있어. 2010년에 증명됐지.",
-    "오델로는 2023년에 풀렸어. 둘 다 완벽하면 무승부래. 8×8 LOA는 아직이고.",
-    "커넥트포는 1988년에 풀렸어. 선공이 가운데부터 두면 이겨.",
-    "틱택토는 가능한 판이 255,168가지밖에 안 돼. 나한텐 그냥 표야.",
-    "모노폴리의 원조는 1904년 '지주 게임'이야. 독점이 얼마나 나쁜지 보여주려고 만든 거래.",
-    "나이트가 체스판 64칸을 한 번씩만 밟고 다 도는 길이 있어. '나이트 투어'라고 해.",
-    "퀸 8개를 서로 못 잡게 체스판에 놓는 방법은 92가지야.",
-    "1956년에 컴퓨터가 둔 체스는 6×6 판에 비숍도 없었어. '로스앨러모스 체스'라고 해.",
-    "LOA는 1960년대에 클로드 수시가 만들었어. 시드 색슨 책 덕분에 유명해졌고.",
-    "윈도우 솔리테어는 사람들한테 마우스 끌기를 연습시키려고 넣은 거래.",
-    "테트리스는 1984년 소련 과학자 알렉세이 파지노프가 만들었어.",
-  ],
-  chatSpace: [
-    "금성은 하루가 1년보다 길어. 자전 243일, 공전 225일.",
-    "보이저 1호는 1977년에 출발해서 2012년에 성간 공간에 들어갔어.",
-    "해왕성은 1846년에 발견됐는데, 발견 후 첫 공전을 2011년에야 마쳤어.",
-    "지금 보는 햇빛은 8분 20초쯤 전에 태양을 떠난 빛이야.",
-    "중성자별 물질은 찻숟가락 하나가 10억 톤쯤 나가.",
-    "화성의 노을은 파란색이야.",
-    "토성은 물보다 밀도가 낮아. 엄청 큰 욕조가 있으면 이론상 뜬대.",
-    "달은 해마다 지구에서 3.8cm씩 멀어지고 있어.",
-    "우주에선 소리가 안 들려. 소리를 전할 공기가 없거든.",
-    "태양 하나가 태양계 전체 질량의 99.8%야.",
-    "목성의 대적점은 지구보다 큰 폭풍이야. 190년 넘게 관측되고 있어.",
-    "국제우주정거장은 하루에 지구를 16바퀴쯤 돌아.",
-    "명왕성은 2006년에 행성에서 왜소행성으로 바뀌었어.",
-  ],
-  chatMath: [
-    "23명만 모여도 생일이 같은 사람이 있을 확률이 50%를 넘어.",
-    "종이를 42번 접을 수 있다면 두께가 달까지 닿아. 물론 못 접지만.",
-    "카드 52장을 제대로 섞으면, 그 순서는 거의 확실히 역사상 처음 나온 순서야.",
-    "0.999...는 1이랑 똑같아. 근사가 아니라 진짜로.",
-    "몬티 홀 문제에선 문을 바꿔야 이길 확률이 2/3야. 다들 처음엔 안 믿어.",
-    "소수가 끝없이 많다는 건 2300년 전에 유클리드가 증명했어.",
-    "1부터 100까지 더하면 5050. 가우스가 어릴 때 순식간에 풀었다는 일화가 있어.",
-    "원주율은 100조 자리 넘게 계산했는데 반복이 안 나와. 안 나온다는 게 증명돼 있어.",
-    "어떤 지도든 색 4개면 이웃끼리 안 겹치게 칠할 수 있어. 1976년에 컴퓨터로 증명했지.",
-    "페르마의 마지막 정리는 350년 넘게 안 풀리다가 1994년에 와일스가 증명했어.",
-  ],
-  chatEngineering: [
-    "에펠탑은 여름에 철이 늘어나서 최대 15cm쯤 높아져.",
-    "비행기 블랙박스는 사실 주황색이야. 찾기 쉬우라고.",
-    "1940년 타코마 다리는 바람에 비틀리며 무너졌어. 흔히 공진 때문이라는데, 정확히는 공탄성 플러터야.",
-    "금문교 색 이름은 '인터내셔널 오렌지'야.",
-    "'마력'은 제임스 와트가 증기기관을 팔려고 말과 비교해서 만든 단위야.",
-    "사람이 판 가장 깊은 구멍은 러시아의 콜라 시추공, 12,262m야.",
-    "자유의 여신상은 원래 구리색이었어. 녹이 슬어서 초록색이 된 거야.",
-    "피사의 사탑은 짓는 도중부터 기울었어. 땅이 물러서.",
-    "부르즈 할리파는 높이 828m, 엘리베이터만 50대가 넘어.",
-    "최초의 신호등은 1868년 런던에 있었어. 가스등이었는데 이듬해 폭발했대.",
-    "자동차 에어백은 0.03초쯤 만에 부풀어.",
-  ],
-  chatSea: [
-    "지구 산소의 절반쯤은 바다의 식물성 플랑크톤이 만들어.",
-    "마리아나 해구 가장 깊은 곳은 거의 11km야. 에베레스트를 거꾸로 넣어도 2km 넘게 남아.",
-    "금붕어 기억력이 3초라는 건 헛소문이야. 몇 달씩 기억해. 너보다 나을 수도.",
-    "해저의 4분의 3 정도는 아직 자세한 지도가 없어. 달 표면 지도가 더 자세해.",
-    "대왕고래 심장은 작은 자동차만 해.",
-    "바닷물이 짠 건 강물이 바위에서 녹여낸 소금이 바다에 쌓여서야.",
-    "산호는 식물처럼 보이지만 동물이야.",
-  ],
-  chatBody: [
-    "네 몸속 세균 수는 네 세포 수랑 비슷해. 대략 38조 대 30조.",
-    "어른 뼈는 206개인데, 아기는 그보다 훨씬 많아. 크면서 붙거든.",
-    "혀 부위마다 맛을 따로 느낀다는 '혀 지도'는 틀린 얘기야.",
-    "사람은 하루에 2만 번쯤 숨을 쉬어. 지금 의식했지?",
-    "코를 막으면 사과랑 양파 맛을 구별하기 어려워져. 맛의 큰 부분이 냄새거든.",
-    "네 몸 DNA를 다 풀어서 이으면 태양까지 수백 번 왕복할 길이야.",
-    "손톱은 발톱보다 빨리 자라.",
-  ],
-  chatWords: [
-    "'로봇'은 1920년 체코 작가 차페크의 희곡에서 처음 나온 말이야. 강제 노동이라는 뜻에서 왔어.",
-    "'체크메이트'는 페르시아어 '샤 마트', 왕이 꼼짝 못 한다는 말에서 왔어.",
-    "'알고리즘'은 9세기 페르시아 수학자 알콰리즈미의 이름에서 나왔어.",
-    "웹 '쿠키'는 과자가 아니라 'magic cookie'라는 프로그래머 용어에서 왔어.",
-    "'블루투스'는 10세기 덴마크 왕 하랄 블로탄의 별명에서 따왔어.",
-    "'와이파이'는 무슨 줄임말이 아니라 그냥 지은 상표명이야.",
-    "'구글'은 10의 100제곱을 뜻하는 '구골'에서 왔어.",
-  ],
-  chatHistory: [
-    "나폴레옹이 키가 작았다는 건 오해야. 당시 프랑스 남자 평균쯤이었어.",
-    "클레오파트라는 대피라미드보다 달 착륙에 시간상 더 가까워.",
-    "옥스퍼드 대학교는 아즈텍 제국보다 오래됐어.",
-    "한글은 1443년에 만들어지고 1446년에 반포됐어.",
-    "바이킹 투구에 뿔이 달렸다는 건 19세기 오페라 의상에서 생긴 이미지야.",
-    "타이타닉 구명보트는 탄 사람의 절반 정도밖에 못 태웠어.",
-    "1914년 크리스마스엔 전선의 병사들이 비공식 휴전을 하고 축구를 했다는 기록이 있어.",
-  ],
-  chatEarth: [
-    "번개는 태양 표면보다 다섯 배쯤 뜨거워.",
-    "에베레스트는 지금도 해마다 몇 mm씩 높아지고 있어.",
-    "남극은 지구에서 제일 큰 사막이야. 비나 눈이 거의 안 와서.",
-    "지구는 완벽한 공이 아니라 적도 쪽이 살짝 불룩해.",
-    "사하라는 수천 년 전엔 초원이었어. '녹색 사하라'라고 해.",
-    "눈송이가 육각형인 건 물 분자가 얼면서 그렇게 배열되기 때문이야.",
-    "하루는 아주 조금씩 길어지고 있어. 달이 지구 자전에 브레이크를 걸거든.",
-  ],
-  chatFood: [
-    "꿀은 거의 안 상해. 고대 이집트 무덤에서 나온 꿀도 먹을 수 있는 상태였대.",
-    "땅콩은 견과류가 아니라 콩이야.",
-    "바나나는 식물학적으로 베리야. 딸기는 아니고.",
-    "매운맛은 맛이 아니라 통증이야. 캡사이신이 통증 신경을 건드려.",
-    "당근은 원래 보라색이나 노란색이 많았어. 주황색은 17세기 네덜란드에서 퍼졌어.",
-    "초콜릿은 개한테 위험해. 테오브로민 때문이야.",
-  ],
-  chatPhysics: [
-    "빛은 1초에 지구를 7바퀴 반 돌아.",
-    "옛 성당 유리창 아래가 두꺼운 건 유리가 흘러내려서가 아니야. 처음부터 고르지 않게 만들어졌어.",
-    "얼음이 물에 뜨는 건 얼면서 부피가 커지기 때문이야. 대부분의 물질은 반대고.",
-    "GPS 위성은 상대성이론을 보정 안 하면 하루에 10km씩 틀어져.",
-    "진공에서는 깃털과 망치가 똑같이 떨어져. 아폴로 15호가 달에서 직접 보여줬어.",
-    "에베레스트 꼭대기에선 물이 70도 정도에서 끓어.",
-    "깨진 컵은 저절로 안 붙어. 엔트로피 때문이야. 네가 진 판도 저절로 안 뒤집히고.",
-  ],
-  eggStudy: [
-    "네 귀퉁이를 다 찍었네. 비밀 통로야. 학습판으로 보내줄게.",
-    "들켰네. 공부하러 가자. 거기서도 내가 가르쳐.",
-    "비밀 통로 찾았네. 학습판에서 기다릴게.",
-  ],
-};
 const NOTE = {"H":12,"n":{"055408209002800280028002800255501":"8|GB-131,XU5hwbDbYbFa3c|4x-147,3l5hfECQXU8kUR|8u-147,wb4xnl5hQC6lXl","055480209002800280208002800255501":"8|CQ-121,o6GC319rgi7jwb|DY-141,o64xgi5yIK9iQi|6o-161,wbCQIKEUgy9rYq","045580029002800280028000080215641":"8|8u-101,Pk5p316sXFGeFT|GW-114,yWFTXl8sPN6l9l|5p-118,31GW1R8unl-mXs","045580029002800280028002082015541":"8|R1-66,PNHOILGenlOmN1|GW-132,yWR1PNCSXTEZIK|5p-136,fN-uPMGWQCFXnl","055488068002000280028002080215541":"8|Ge-149,IM9vKOFNg7EfPk|9v-149,IMGeKOFNg7EfPk|8u-160,IM-egiGmor9vru","055400068002880280028002080215541":"8|9v-146,31FaPka1Xl-ml1|8u-160,g7-eaeDeor9tYb|-m-178,g79voT8uYbvtQC","055400068002880200028002880215541":"8|5x-137,wi-mn19vXlFaoa|-m-139,n1Cdw0GNYKFaoa|9v-157,n1EW3zvtwiGmfc","0554800680028002000280020a0215541":"8|-m-105,fNCdIM9vQZ8uYb|9v-144,308unm-sPkGmos|Ge-165,IaFaoaOma68sYb","055580028002800200028001888015441":"8|-u-128,XlGWyW59PN7rwi|GW-144,n1-uPN59XFCUfd|8u-145,PkGeIa59wzDbzb","055580228002800000028001880215441":"8|8u-111,PkGenl5930HOIa|HO-121,30GePv-mIL8uwi|GW-141,PM6oIa8uwiDTQC","055402229002800080028002800255501":"8|4x-128,PMGB3l5ZQC7pgj|GB-129,gyBZo64x6iFXwb|7p-133,NpRp31DRPNEUvs","055480229002800080028002802055501":"8|6o-120,gy5pILpNPd4xwb|GB-124,IL5hgyBZwz6oPd|4x-142,IL5hPMDYXFCQFh","055508028002800200028006880215141":"8|9v-121,Pk59fNGe307rwi|FX-134,Pk9v30-mfNGewi|5x-141,wi-m30HVQT9vTu","055508028002800280028006080215141":"8|9v-98,Pk59fN-mYhFXhm|FX-126,31CUgiGev9-mPk|HO-153,g79vYDGNPkEfKN","055480029002800280028002082055501":"8|GB-101,IK6ogiBZQC5hCU|5p-110,PNCQIKGCnl8sgi|DY-118,IK5pPN8qgiELNp","055408268002800080028002800215541":"8|-m-127,wy7tNt9v31CdPv|7p-139,wy8ugi9iQi-evd|Ge-140,gy-mYD9vwiCdDe","055580228002800000028006880215141":"8|-m-90,PkGe30FXIKCdwi|9v-111,PkGenl5930HOIa|Ge-114,ILEMYaFXPkDn30","055408068002800288028002000215541":"8|-m-125,gy9vn1Ge306lPv|6s-138,fN9iQi5rvd-mor|9v-143,fN8uYD59orvdXl","055102228006800080028002800215541":"8|DR-124,31-uPM70XFHOv9|FX-125,wyWyPMHO31Xlv9|-1-131,PM8nXF9dwi6iQi","055580228002800080028006080215141":"8|-m-89,YKGe31FXPL6oIa|Ge-89,YK-m31FXPL6oIa|DV-118,XFGevdCQILQiYb","055180228006800080028002802015541":"8|HO-105,IMDRoTOmv97p9d|CQ-113,PM5rnl-uXs7pv9|-u-119,PMCQXl5rv97pnk","0554800290028002000280020a0255501":"8|5p-121,IK9vPNvsfdEL30|9v-121,IK5pPNvsfdEL30|DY-127,IKYzo6CUPN9v3l","055480209002800200028002880255501":"8|4x-116,IK5hn1ELwbCQoQ|GB-123,IK5hYa4xXFCQFh|8u-136,IKGWwz5pv96oYa","05508022900680008002800a800015541":"8|-j53,IL5kPM9lgy6oXl|CQ39,PMDYILWuwiYqo6|DY39,PMCQILWuwiYqo6","05500a029006000280028002800215541":"8|5p50,wy8uo69vXFvU6a|8u50,wy5po69vXFvU6a|-u42,wy5p318sPMFXnl","055408029002800200028006880215501":"8|5p49,wzEWQiCUPN9vfd|GU15,PN5pwzFXQi9vnl|CU12,PNGWor5prWFXwz","0554800290028002000280060a0215501":"8|5p49,IKEWQiCUPN9vfd|FX12,30DYo6YzQrGWIK|DY8,IKYzo6CUQiFXKl","055480229002800080028006080215141":"8|5p42,IL6sPMGegi9v31|Ge8,IL5p3170Ya-mXF|6o4,IL-sPkEcv95pYa","055480a09002800080028006800215141":"8|Ge37,nl5p31-mwyDYv9|-m9,IL5pQCpNCmGeoT|5p6,Np6o31-m1aFVwb","055008209006800280028002800215541":"8|5p53,nl6lXl-u318sgi|8u49,gy5pQi7r30-mfd|-u37,gy5pQi7r306oNp","055008029006800280008002802215541":"8|DT59,PNFaXlR13TWTfc|5k40,PN7p30-uwz6oQC|-u39,PNDTgy6ow0FXQo","055408029002800280028006080215501":"8|5p26,Ya8soTFXQC6lgj|FX15,Ya5pfd8sv9XUPk|8n7,315pPd6sgi9iQi","055480209002800200028006880215501":"8|GW38,IK5pwz8nQiCUv9|7r35,wz5pIK9iXURUvU|5p7,NpEW307rwzGev9","055480209002800280028006080215141":"8|5p47,31-mIK6sfEFXvX|-m47,315pIK6sfEFXvX|Ge18,nl5po6FM31-6IL","055480209002800280208006800215141":"8|9r42,Xs6o31GeIKoafE|-m31,319rXFGewy6lFl|6l27,Xl-m319rNi7jQr","055408029002800280009002802205541":"8|-u56,wz8sPNGW30CQYa|EW42,wzCU30-mYaFXPN|GW38,PN-u30FTXl7go6","055408029002800280029002080205541":"8|8u54,YaEWXFCUoTGmKu|EW51,31CUfd9vPN7rXv|6s41,v9EWnl-mYaFaoa","055408209002800280028006800215141":"8|5p51,wy6snlFX31DTvX|-m47,315pwy6sfEFXvX|7p34,NpRpwy-mgjmjYD","055408029002800280028006080215141":"8|5p54,YaEWXFCUoTGmKu|Ge29,Pk5p31EWv9CLXF|CU5,Ya5poT6s31-mTu","055008029006800280028002802015541":"8|-u59,PN7pwyFTgi5hQC|DT50,PN6owy-unl9rYa|5p45,PNEUfd7gwy-uQC","051480209042800280028002080215541":"8|Cd86,IKdy3lGWXs8usR|GW50,IK9v315pgi6sfd|-u23,Ya9vfdGWIK7r31","055008029006800280028002080215541":"8|Wy65,giCUQrUio6EUYa|EU54,yWCdgi6ioa7yYc|5p26,giEUQr9vo6CdYb","051408029042800280028002080215541":"8|GW47,PNCdv9FX31Wy9d|5p29,PNGWn1CQ309vo6|Cd15,g7DTYqGWQiFao6","055080020206800280028002080215541":"8|Wy-88,IKFXgiCUo6UiYa|Ca-90,yaFXYbEfIKDV3c|Ef-143,IaWyYbDVnVFXPk","055080229080800080028002800215541":"8|DY-87,PMRU31Cdn86oIj|CQ-105,PMQi31R1nkDTvd|DT-107,PMCQnVRh3lQUlT","051480020206800288028002000215541":"8|6i-94,TWFXYaGUoqCdad|DR-124,IKFXYaGe3cCUae|CU-127,Ia7jnj6iYb-joM","05148002000a800280028002800215541":"8|GU-56,wiCaXUDRIKRUgj|DT-89,wyTWoaGeg7FXIj|FT-128,wy-sWTCayaDRIK","054480020201800280028002080215541":"8|Ca-105,IKGWyWXlgy-snl|DR-144,IKEUYaCdg7GWad|EU-151,PkGWIaCdYcXToT","054480220201800080028002800215541":"8|GW-93,PMCSv9XT3lEZnk|CS-93,PMGWv9XT3lEZnk|-u-130,PMGW3X5rIR6swi","055080228142800080228002800015541":"8|Ec-19,PMCQILUpgS6lnl|Cd-26,lTFXnVDVPMXlv9|CQ-55,PdUpXUQilT9dnk","05500a028142000280028002800215541":"8|-1-31,wiFaiUCQoQDV31|EW-46,oTFTQiDVnV5kwb|Ec-59,gi9voTFTwbvLfc","055080229042800080028002802015541":"8|DY-3,PMCQ1R5pILU0oT|DT-7,1RFaPMCQILQiYa|CQ-33,1REcPMDTwbQiIL","05500a028106000280028002800215541":"8|Ef-8,wyFXPMXlvUfeoT|-u-16,wyEfoTFTg7DVyW|-1-31,vUFao6CQwzEf6l","051488028242000280020002800215541":"8|FT-12,IL-uPd7pXOGiQT|DV-151,IaGWwiCdnVFXad|GW-157,PMFXvUCU3c8cwi","05140a028142000280028002800215541":"8|GW-46,oTFTQiDVnV5kwb|-u-50,XF9vPd5r31rdfd|FX-54,wy8uPMCFor-mru","051480028142800280028002082015541":"8|Cd36,YKDbPMFX1dGWvU|GW25,fdFaYKCQo6QiIL|DR24,YaCdfWFXoTd1Pr","051488028142000280028002080215541":"8|Cd-2,n1Db3cGWXl6oIL|GW-7,yWCdILFXPMXlfd|-u-14,31DbPMCQIL9vor","051488028106000280028002080215541":"8|Db-30,ILGeg7FX7bebyW|DV-52,ILFanVGeyWCQo6|FX-72,ILGeyWTzo6-1QT","05508002810a800280028002000215541":"8|DR4,QiEUiUCSIKFXgS|EU-3,YKCd3cDbIaFXoT|CU-14,Ya9vIKDbQJvt3c","051400028106880280028002080215541":"8|DR44,gZWyYcGWQr6arT|Ge23,YcDbv9WyQT6agi|9v-19,nlGeaeFVlVCaya","055088228106000080028002800215541":"8|Fa17,o6CQ6sEcIM9vwi|5k-7,PL-u316iXFiKnk|-u-14,31CQIM9vwyWyor","015480224202800080020002800215541":"8|FT-21,wbGWILDRYaEUvU|GW-28,IaFXgiXTwbEU3l|QT-56,IL5rwb-uYK8ngi","055080228106800080028002802015541":"8|CQ42,PM-uIL5rwi7pgj|EU21,PM6oQiDbn8oMvU|7017,YKEcXlFawzCQIM","015480224102800080028002080215541":"8|GW-14,yWQiXUDbIabk3l|DR-42,ILGWyWRWXlFaYa|Qi-54,NiGWPNEU31Dbnk","055480228102800080029002080214541":"8|GW-23,yWDR3lTlo6-j6l|EU-46,PkpN31Cdn8GWoT|-u-54,QTDToTFTIL6sgi","055402228102800080029002800214541":"8|GW-17,wyDRoTFTyWRW3l|EU-33,3l6loTFTXl9lQT|pN-53,oT-uwy9l318sgj","054408029012800280028002080215541":"8|8u-11,Ya5pfN6s31De1V|-u-19,Ya5pfN8sPM6ovd|5p-22,n1-uYa6ogh8sQC","054480029012080280028002080215541":"8|-u-3,31DeIKGNnlNKPk|EW-8,PNGenl6oIoCaoa|GW-14,PNEUIKCdv9Wy9d","055408029002800280028012080215441":"8|5p-11,giEWn1CUPN7mNt|7m-28,Ya5p31EWgjFaoa|FX-39,315pYaEWfdGUn8","055408029002800288028012000215441":"8|GW-19,gy5pn1EU30CQXl|EW-21,PN8ugy7mXF5p31|5p-24,PNGW3lFXo67m6a","115480008402802280029002802014541":"8|-u-19,fNGWwyEZo680Ia|6o-63,XFGWIj-uQiSiFl|GW-64,wy-uyWFTIa5ho6","115480028402800280029002082014541":"8|-u-21,PkEZv9GUkSFTfc|EZ-44,Ij-uo6GUPk8kgk|GW-45,yWBZIjEgo6gj6s","055480229002800080028402080211541":"8|-u-13,31GWyWDTILFXPM|DY-15,31R1Pk-uv9Cag7|CQ-30,g7QJ705hvs8YPd","055480209002800280028402080211541":"8|GW-13,nl-u31CaIKa1N1|-u-13,31GWnlCaIKa1N1|5p-24,31R1nlGWN1FlXl","115408208402800280029002800214541":"8|GW-3,n1-uQi5h306swz|pN-29,XFGWnlEZ315hFa|5h-56,Np-uKu8s316lwy","115408028402800280009002802214541":"8|5h-9,30-uXFGWPNDMYa|GW-13,PN-uKu5rwz9v30|EZ-37,30GWPN-uo65rYq","054408209012800280028002800215541":"8|-u-13,gy5pNp8s306owz|8u-13,gy5pNp-s306owz|GW-20,gy9v30Dewi6onl","054480209012800280028002080215541":"8|5p-7,IK8uYa6s31DefE|8u-7,IK5pYa6s31DefE|-u-13,IK5pYa9l31lKyK","055480209002800280028012080215441":"8|5p13,IK7mYa-jfdFaoa|GW-10,IK5pgi7mXFEU3l|7m-11,n1R1Nt8uIj-jgj","115480208402800280028006802015141":"8|Ge1,nl5pwyEZIjBco6|-m-24,fEGeEMBRgSDYwi|5y-41,1y-mYaFaIaGeyS","111480228402900080228002800015541":"8|GW-18,YK7pPL6lXl-snk|7p-18,YKBhPLhlNpGWvs|-u-24,YK5rXFBFPLGWLr","115480208402800200028006880215141":"8|Ge-18,Qi7r30-mfEm0ES|DR-26,30Gewi5hIK7zfE|-m-32,30GefEBRESDYwi","111480228402900080028002802015541":"8|GW-17,YK7pgi-uo6DLIa|6o-24,YK9iPL5hvdiKwb|DR-29,ILGWPM-ugy6owz","055408029002800200028012880215441":"8|5p-6,n1Fdw0d13l-jlj|FX-23,n1GUPN6o3lCdyd|GU-23,n1FXPN6o3lCdyd","055480029002800200028012888015441":"8|EW-8,PNGeo65pwzpsIK|-j-16,IK5pwzGU0U6oPd|GW-16,PNDTXl-jlT6onl","054488029012000280028002080215541":"8|5p-6,fN9lIMlNPdGbdb|EW-7,vdGePMCQILQiyW|De-17,fN8unl5pv9EMPd","054488809012000280028002800215541":"8|5p-6,wyEWIL8uv9-eoa|8u-10,wy5pfN-moaCQ31|7p-19,wy-u31CQIL9roQ","115480228080800080028006800215141":"8|EU-104,wUBcPMDRvdRUnV|Ge-121,PMBc31-mv959Um|Bc-128,31-mPd5rdrGeIa","115480208080800280028006800215141":"8|Ge-85,fEFT31BEv9EUnl|EU-93,wUBRQiGev9DTnk|BR-145,URGe31-mwy5pIj","111480028084800280028000800215641":"8|BR-92,IKGePN-m31mU9r|Ge-92,IKBRPN-m31mU9r|DR-147,PNGe31R1ftFTnl","111480208084800280028002800215541":"8|Ge-128,31BRn8FTv9DYft|BR-131,v9GenlDYo6YbQi|BT-134,31Gev9Dbn8Faft","105480229080800080028002800215541":"8|FO-207,3lGePd6ln1BTv9|-u-216,31GWv9FTPM6onV|BT-217,v98uPMGe31R1nl","105480209080800280028002800215541":"8|8u-210,URGev9BcYc-mwi|GW-216,n1R1wb6y3lBRN1|BT-217,nlGWv9Fa31Tlfc","054488029102000280028002080215541":"8|Db-41,fNThPLCQvdbdyd|EW-65,PMDboTGeIL5p3c|GW-73,PMRhIL5pnkCQo6","054488809102000280028002800215541":"8|Tu-62,wiGeILEWv98so6|7p-80,ILTunlGbo69rwy|6o-87,wyDbnlTX3X9rIL","115480228082800080028006000215141":"8|EU-107,ILDRPMBcvUGeoT|Ge-126,ILEUvUDRoaBZae|-m-132,PMBcYaGegjDbjm","115480229002800080028002802015541":"8|-u-105,oa8sPM5hXs6snk|R1-120,PdBRXUFTnlGWlT|BZ-208,1RGWXl-uv9EUQU","115480a09002800080028002800215541":"8|GW-84,3lDTwi8uXFBlFl|-u-88,ILGWgy7jLjRj30|8u-105,31-mXFBTFl6owb","111480020086800280028002802015541":"8|BR-101,IKGeo6DTwiFX6l|FX-109,IjXUwbBRo6GbYb|DR-111,1RGePNBKwbKNoa","111480208046800280028002802015541":"8|Ge-27,QUBR1RFTwb7bvd|BR-62,wUGenlDTlTR1vd|Um-83,fdBRIK-egy5pv9","054408029102800280028002080215541":"8|GW-60,PN7jgj-jYaRh3c|CU-94,YaDboTGWPNEcnl|EW-114,YaDbg7Rho6GeQi","054480029200800280028002080215541":"8|GW-51,PNDYv9Ca3laynk|DY-106,PkCUfdEknkGWvU|EW-112,yW7p3lDTlTCUIK","015480009042802280028002802015541":"8|EW-67,vUR1nlDMXsGeft|R1-67,nlEWvUDMXsGeft|GC-109,nlDY1RFTlTEcwi","015480029042802080028002802015541":"8|GW-49,PNR1vUFTXlTlnV|R1-49,PNGWvUFTXlTlnV|Ec-75,PNGWvUDYwbFT1R","115480208002800280048002802215541":"8|BR-79,1RDMXUGev9Fa31|Ge-80,3lDR1R5yRUBTwy|DR-84,IKGe307po6BhYb","054408209102800280028002800215541":"8|7p-44,NpRp3cGWvs9rnl|GW-62,wy7jv9EUo6jgYa|Tu-92,v9GenlCQo6EU6e","115480208082800280028006000215141":"8|EU-75,YKBRIL9vnlGeKu|Ge-91,IKBRfEDTYa5pvd|BR-96,fEGeXTDYIKYhKu","115480208002800280068002080215541":"8|5p-75,31BR1RGev96lXU|BR-128,g7Gev9-jIKEL7m|Ge-128,g7BRv9-jIKEL7m","095408021002800280024002800211541":"8|5r1,gyGWYqWy3loxwp|5p-18,wy-sCURUyk7rYD|GW-45,wyWygiFTYa-jKy","055408029002800200024002880211541":"8|GU-36,QCFXwiELPM5pYa|FX-36,QCGUwiELPM5pYa|9v-54,wi8snlFXPkCU3c","015480025002800200028002080216541":"8|5p-37,IK6sn1-uoaGUYb|-u-53,IK5pYaQTacFXo6|9v-69,oqQZYz-jPk8knk","015408025002800280028002080215541":"8|5p-13,31GUYaDVo6V1gi|-u-78,YaQTo65pPduKgi|9v-86,o65pYaQTXl-ugj","105408025002800280028002080215541":"8|5h-70,g7BZo6-sPd9iXs|BZ-70,o65hg7-sPd9iXs|GN-102,o6BZg75h6sFTKN","105408025002800200028002880215541":"8|GU-43,o6BZYq-svs8qwz|BZ-43,YqGUo6-svs8qwz|5h-46,o6GU6sBZwzFTPd","105480025002800280020002080219541":"8|QJ-61,Pk5Z6s9rg7BTYq|5h-64,IKEUYa9rvdGWg7|EU-64,IK5hYa9rvdGWg7","105480025002000200028802880215541":"8|8q21,wz-jIKGCo65h6l|-j-22,wz5ho6GCIK9r6l|GU-43,IKBZo6-sXs8qwz","054480228101800080008002802215541":"8|CQ-29,30XlPMGW1aQror|Xl-29,30CQPMGW1aQror|GW-29,PMCQ30Xl1aQror","054480020201800280008002802215541":"8|GW-25,IjEUv9XTwz5k30|EW-25,IjGUv9XTwz5k30|ES-73,IjGUPdXTwzCao6","0154800250028002000280020a0215541":"8|-j-48,o65pIKGUYaFT6l|5p-50,IK-so69v6iQiKi|FX-83,IKEUoq5pPdXsvU","015480025002800200020002880219541":"8|GU-35,wz-jYaFX6lXTIK|-j-48,wz5pIKGUYa9r6l|5p-48,wz-jIKGUYa9r6l","055408029002800288024002000211541":"8|CU-12,QrEWi98s3lGeYb|-u-28,gy8sPk5pQCFTYa|8u-33,Ya5pQCGbKMEWgj","05548002900280028802400a000011541":"8|7p-12,QC5riNGeIL-sue|5p-15,QroafNGePM9lNl|8s-20,IK5rfN7pXFGevd","115408024002080280029002800214541":"8|BZ0,wy9ifN5hXl-sni|-s-12,asGbwy5ho6psgS|Gb-16,wQ5hPW8sQJ-jJb","115400024002880280029002080214541":"8|-u-9,PkBZo69iy0Ek6i|BZ-29,gi-uv9Gb9Z5hPd|5h-36,Pd-uXFuT318sFl","111400024006880200028002880215541":"8|5p-77,wz-mYKGUo69r6l|BT-115,yWDRwy-jYbGWo6|DR-140,wzBZyW5hvmGNo6","111408024006080280028002800215541":"8|Qi-18,wyWy3cFaoaGUgZ|BR-23,wy5p3l9lo6Gegj|GU-28,wy5p3cBRo69rgi","015408025002800280028002802015541":"8|GW21,o6EUn8-uYq5pXl|DT0,wyGWoTFTg7EfYa|5p-13,o69vwyGUYa7rgi","015480025002800280028002082015541":"8|5p-11,o67rfdGWIK-uYa|-u-23,IK5pYaGUPd9voQ|EU-61,o6GWg75pIK9rYa","055480209002820280024002000211541":"8|8u12,IKCUnlGeft7tbe|CU12,IK8unlGeft7tbe|GW-27,IK8ugiFTnl5rQo","055408209002800280024002800211541":"8|5p-13,wy-sQCFXYaDTgi|GW-14,wi-uQC5rgyosYa|-u-38,wbGWgiFTQo5rnl","105480025002800280028002082015541":"8|GW-14,g7BZIKWyo65h6s|BZ-32,Pk-ugj9io68k6i|-u-64,g7BZor5hIK6s7t","105480025002800280020002802019541":"8|5h-10,wy-uIK9rYaQTgS|-u-10,wy5hIK9rYaQTgS|GU-17,PdBZwy5hg7ESvU","055480029002800288020202000214541":"8|6i-121,IKCUYa-6nV8k3l|9v-151,IKCUgSES3l-sPN|EW-169,IKCUQ09vYa6sgj","055480029002800200022202800214541":"8|EW-160,IK-mwbCdYcDbrb|9v-166,wb6spR-aIK8k3l|-j-168,pR6swi9vIK8uQT","051480209080800280028002800215541":"8|CQ-110,31DYvdGW1RFTwb|GW-114,31DYn8CQftQUv9|DY-137,o6FM31R1Ij-jgj","051480029080800280028002802015541":"8|R1-103,PNFOfdOmnVGev9|Fd-115,1dGWPNCQfcDTwb|GW-157,1RDTPNFaneCQea","045480221202800080028002800215541":"8|5p-104,vd6o31oTXFRhIL|GW-118,PM8uTuWuIL5poT|5r-136,ILGW3l8uXF-swi","045480021202800280028002080215541":"8|Ca-109,g7GWyWFXIKEUo6|FX-114,IKGWg7Efo6XTYq|GW-114,IKEfg7FXo6XTYq","045408029200800280028002800215541":"8|CQ-107,wyQToTFTg7GWYq|GW-119,PNCQ3cRhwiQTnj|5p-145,PNGW3c-sv97g9r","045408029202800280020002800215541":"8|FX-27,QiGWwyXTyWCUgj|FT-35,XTGWPNEUQiCdwU|GW-59,Ya6agi-jwyWyQr","145408208006800280028002800215541":"8|-m-86,gyBRn1Ge3z5pv9|BR-87,n1-mwz5pgiGev9|Ge-99,gyBRwz-mv95pYb","145408028002800280024002080215541":"8|5p-165,giFXQrCUi9BRYa|BR-186,g75pQCFTYaGWCU|6s-200,g79v7tCUXUGUPk","145408028006800288028002000215541":"8|-m-86,QTBRPN5pNpmi3c|5p-93,3cBRnkGeo6CUXF|7p-104,PNGev9-m3c5rXF","145408028002800200024002880215541":"8|FX-140,wzohYaXsv9BZPk|BR-167,wz5pQo8so6-jYa|5p-167,wzBRQo8so6-jYa","051480209042800280228002800015541":"8|GW30,vUCUQi5pXs8unj|5p-113,vUCUXsFTnk9lsp|DT-120,wUTlXTGWTlCQvd","051480009042802280228002800015541":"8|-u61,fc9rXF7po6DYnk|5p25,n1-uQiGWo67gXF|7p13,fcFTn1-uXsGW1R","141480028206800288020002000215541":"8|FT-9,IaBRQrGUgjCdYc|Ca-95,3cGePNBRv9FXnk|BR-97,YaGUgjUiIKCU3c","141408028106800288028002000215541":"8|BR2,oTGeYbFTbeCUgj|CU-69,3T6iYa5koMGeKi|TX-142,gyWyQrGWYaBRo6","141408028142800288028002000215541":"8|BR-44,3cFXQCXlvURUCU|-u-100,oTFTQrCdYbGWru|GW-155,3TUiv97r9t5pnk","051480029082800280028000802015541":"8|CU-5,PdDYfcFTn8GWXl|GW-54,fd5dPNR1XlFTnk|R1-104,Pd9dXFDVnVGWFT","141408028142800280228002800015541":"8|BR-16,PNGWwbFXv9CQ9r|GW-16,PNFXwbBRv9CQ9r|FX-16,PNGWwbBRv9CQ9r","05148002a042800280028002800015541":"8|DT6,fWGbwbFaPkCdXl|GW4,XlDTlTFVPNCQnV|Cd-21,PNGWQiDTwUFank","141408028142800280028002802015541":"8|BR-24,PNGWgi5pvUCUoT|GW-24,PNBRgi5pvUCUoT|Cd-26,YbGWwyBRXlFagZ","105480028142800280028002082015541":"8|EW-50,yWBR1RFXPk5knk|BR-51,fdR1PNFCnlGWlT|GW-56,PNBRfdEcvUFaya","141400028142880280028002080215541":"8|GW-3,g75pYbBRQi9vo6|5p-39,31BRYb6svUCUPd|BR-60,PkGWfc9v316sXv","105480028242800280020002080215541":"8|FT-50,Ia-uQiGbg7Blil|BR-73,YaGWyW-agyayIK|GW-165,Ia5pv9BRYbEfXl","055480209002000280028802800215141":"8|-u-80,qu5pwy9lvd7rgj|5p-101,Np-u316onloaXU|GW-109,IK5p31-unl6lXl","055480029002000280028802080215141":"8|5p-138,IK-uoauqQCGUvU|FV-177,315pIK-uPd6s1V|-u-177,qu5pIKCUoaGb3c","141408028026800280008002800215541":"8|BR-81,o6GD3lDVPN-sYa|CQ-94,o6GUXlBRwQ-sYa|Ge-104,QU9vPNvU3c5poa","141480028026800280208002800015541":"8|Ge-128,PNFTo6-s6q5pYb|FT-128,PNGeo6-s6q5pYb|CQ-134,PNGewiBTlTFXv9","051480029a00800200028002800215541":"8|GU-76,PNDYvUCU3l5pfd|7y-86,3lySPNDTlTCawb|5p-86,PN6oIKoT3c7jQC","051480029802800208028002000215541":"8|FX-129,IKGWQrCUo6XSYa|GW-129,IKCUQrFXo6XSYa|CU-129,IKGWQrFXo6XSYa","051408029802800200028002800215541":"8|GW-64,wyCUyWFXPNDV3l|GU-78,PNCdXl5pn1pN30|8u-123,YaGewyDTQi-jo6","051408029402800288028002000215541":"8|SW-72,gy5pQrCUyWGiKi|GU-100,iUSyPNFXgZCQYb|SJ-116,Qr-ugy5hXFCUo6","055408029002800280028402080215141":"8|qt-130,315pfNGWgi-uPM|5p-134,Yq9vPd-uQCvqCq|-u-138,Yq5poauqQCGUvU","045480209012820280028002000215541":"8|-u-117,nVRVv9FTXlGW9r|8u-121,nVRVQTCUTu5yIa|GW-123,IKVnv9FTXl-u9r","045480209010800280228002800215541":"8|GW-89,nVCQVRFTv9EU3c|CQ-89,wbGWo6EUYqFMv9|FT-93,nVGWIK-u31CQo6","145480200202800280028012800215541":"8|GW-71,NtWTo6BRv9FdYq|BR-72,NtGUf05y0U7tgy|tN-79,gy8u30-mTu5pIR","145480020202800280028012080215541":"8|BR-71,v9GWyW5pPdEUo6|5p-87,IaBRo69vXlRTPd|-u-139,IK5pgi7m31BRTu","145480020202800280018002080215541":"8|BR-60,fNEU31GW1RCdPM|5p-88,Ia6sgi8uv9-jPd|CU-117,IaBRg7FXfcGWv9","145408020202800280018002800215541":"8|5p-55,316sPNGWTWBRwy|7p-58,wyBZ316sv9GWyW|BR-62,wyCUg75pYaFXo6","051480029880800200028002800215541":"8|5p-83,IK-s31sUvUCUPN|-j-91,QiFTwy6on15p3l|8u-93,IKGe31FTwi5rnl","051480209480800280028002800215541":"8|8u-46,gSGeIKFT31CQwb|DT-61,gSCQo6-jwQ5p3l|CQ-61,gSDTo6-jwQ5p3l","051408209402800280028002800215541":"8|GW-72,3l5pgSFXQi9lNp|-u-76,wyGW31FXvdDTgS|SW-80,n1GegyFT3zCQwi","045408209012800280028002800215541":"8|GW-60,3l5pnVCQv9-s9r|8u-75,nVRVfdGe31Cdvd|-u-90,nVRV31GWXlFTwi","051480209402800280020002800219541":"8|5p-60,gS-uIK9rwy7jQC|-u-60,gS5pIK9rwy7jQC|GW-61,IKFXwiCUgSDT3c","141408208016800280028002800215541":"8|BR-46,wbGe3lFTo6-sYc|Ge-47,3cBRwi8ugZ5rZe|VR-98,v9Gegy-swz5hft","045408229012800080028002800215541":"8|GW-63,3lCQo6FMwi5kgy|CQ-74,PdGW3lFTnV5pv9|-u-76,nVGWPM7pXlCUv9","05140a029006000280028002800215541":"8|5p52,wy9voa6s3l-aXs|7p37,wy5hXFGeo6-63l|GU34,wi7po69vQCvLgj","051488029006000280028002080215541":"8|5p52,IL9voa6s3l-aXs|Wy32,IL5pgiGbo6-sQr|Ge30,yWDTPMRW3cCUIL","055480009002800200828006880215141":"8|5p33,wz-m30EWXFGUv9|-m33,wz5p30EWXFGUv9|EW26,v9GmQi-eo65p30","0554800290028002000280060a0215141":"8|5p52,IKFXQiCUPdGivU|-m25,PkEU305pXFGev9|CU17,Pk5pQiGiXUpUv9","045480a09002900080028002800215541":"8|GW36,nl-u316ogi5rQC|-u29,31GWvd7po6CQgi|6o2,31-uwb5h1aCQIL","045480229002900080208002800215541":"8|5h43,31FavdGWPMZdXs|GW36,PM-u316ogi5rQC|-u36,31GWPM6ogi5rQC","051408029006800280028002802015541":"8|Ge61,PNCUnl5pwy8sv9|CU61,PNGenl5pwy8sv9|DT55,PNGenlFao6R16a","051408209006800280028002800215541":"8|5p40,Np8u31-eXF6swb|8u39,gy5pNp6sv9-eos|Ge35,wy5pn19v3lvsgi","055480009002800280828006080215141":"8|5p48,XUEWUp-e316sv9|Ge27,31R1IjDbv9Fdg7|EW20,31R1IjGmg7-j7m","045408209002900280028002800215541":"8|GW35,31-ugy6owiornl|-u35,31GWgy6owiornl|FT-10,giGWv9CQo65hfc","045480209002900280208002800215541":"8|GW36,IK-uo65r319vfc|CQ16,IKGWo6FMgiEcwb|-u-2,31GWXsEc1R5rv9","145408209002800280029002800214541":"8|GW46,wyBhYa-uv9EUfd|pN-12,3c-uwbBZgiFdQC|EU-31,3cBhvUCUXl8ko6","145408029002800280029002080214541":"8|5Z46,gi-u31GWXF8snl|Bh43,31-ufNGWyWFXPM|GU18,31BhYaEWPNCQo6","055480028002900280029002082014541":"8|Fd20,vs-uo6DR1RGUsp|-u15,YKFTIa5hfNCQoQ|EW10,yW-mPNm0vdGWdZ","055488028002100280029002080214541":"8|-s31,315hIj6lfNFXPM|5h20,31FaILa1fd9lPM|-u16,31EWyWuWILFTgi","045408229002900080028002800215541":"8|-u31,wb9lPMuKvd5hNK|8u18,wbGePM-mgy5h31|GW12,giFTPM6owb-uQo","05148002900a800280028002000215541":"8|DT57,oTFTgZ-jneRWYc|FV16,o6RWQiGeIaDnae|FT7,3lTlPNCUNlDTvd","051480209006800280028002080215541":"8|5p54,IK8ugi-enl7rXF|8u54,IK5pgi-enl7rXF|CU50,IK5pgi9v3lGeXF","141408029006800280028002802015541":"8|Ge48,PNFTnlBZo6CUYq|BZ43,o6GePN-mn85rYq|-m34,PNBZwbGen86oYq","141480029006800200028002080216541":"8|Wy54,IKBZo6GN3lFl6l|Ca46,yWBTIKRWQiGeo6|-j44,IKWyYa5hKyBZPd","045580029002800280028002080215542":"9|Pk112,HO31R1Ij-jnj8k|v9101,8uPk5p316sXFGe|3166,R1PNHOILGenlOm","055480209002800280028002800255502":"9|IK131,GBXU5hwbDbYbFa|nl121,CQo6GC319rgi7j|gy116,4xIK5hn1ELwbCQ","055480068002800200028002880215542":"9|Ia137,5xwi-mn19vXlFa|fN115,GeIM9v30-mPk59|wz105,-mfNCdIM9vQZ8u","055480068002800280028002080215542":"9|YK149,GeIM9vKOFNg7Ef|Ia146,9v31FaPka1Xl-m|IL140,9vLO-mYaGNg7vt","055580028002800200028001880215442":"9|30128,-uXlGWyW59PN7r|IK120,8ufN5930GePM7r|fN111,8uPkGenl5930HO","055480229002800080028002800255502":"9|IL128,4xPMGB3l5ZQC7p|31120,6ogy5pILpNPd4x|gy117,4xIL5h3zDYwbFa","055508028002800280028006800215142":"9|gy121,9vPk59fNGe307r|wy98,9vPk59fN-mYhFX|PN70,FXgy-mfdXVv9Cd","055480029002800280028002802055502":"9|fN120,6ogy5pILpNPd4x|PN105,GBIK6onl9rwiBZ|wy101,GBIK6ogiBZQC5h","055408068002800280028002800215542":"9|fN127,-mwy7tNt9v31Cd|wy127,-mfN7t319vNtCd|wi125,-mgy9vn1Ge306l","055580228002800080028006800215142":"9|gy90,-mPkGe30FXIKCd|wy89,-mYKGe31FXPL6o|PM85,-mgy6o30orILrL","055180228006800080028002800215542":"9|IL124,DR31-uPM70XFHO|wy113,WyILDRPMHOoT5p|31105,HOIMDRoTOmv97p","055480029002800200028002880255502":"9|wz121,5pIK9vPNvsfdEL|PN116,4xIK5hn1ELwbCQ|IK116,4xn15hPNELwbCQ","055080229006800080028002800215542":"9|PM-50,-u317pv96oQCoT|3u-53,-jIL5kPM9lgy6o|IL-69,EU31-uoa7pnlCa","055480029002800200028006880215502":"9|PN-38,GWIK5pwz8nQiCU|IK-49,5pwzEWQiCUPN9v|wz-49,5pIKEWQiCUPN9v","055480229002800080028006800215142":"9|PM-37,Genl5p31-mwyDY|wy-42,5pIL6sPMGegi9v|IL-42,5pwy6sPMGegi9v","055008029006800280028002800215542":"9|PN-53,5pnl6lXl-u318s|n1-59,DTPNFaXlR13TWT|31-59,-uPN7pwyFTgi5h","055480029002800280028006080215502":"9|IK-26,5pYa8soTFXQC6l|fN-38,5p31GWPMDYvd9r|Ya-39,EWIKDTPN9v31Ge","055480209002800280028006800215142":"9|nl-42,9rXs6o31GeIKoa|wy-47,5p31-mIK6sfEFX|gy-58,-mwzGeo6FX6eDe","055408029002800280029002800205542":"9|wy-54,8uYaEWXFCUoTGm|n1-56,-uwz8sPNGW30CQ|31-59,-uwyEWPN6snlGe","055408029002800280028006800215142":"9|PN-51,5pwy6snlFX31DT|wy-54,5pYaEWXFCUoTGm|31-55,EWwyWyYaFaoaGe","055408029002800280028006800215502":"9|wy-26,5pYa8soTFXQC6l|gy-49,5pwzEWQiCUPN9v|PN-50,5pwy8s31FXYaCU","055080029006800280028002080215542":"9|PN-59,5pIK8u31CUnl-m|IK-65,WygiCUQrUio6EU|yW-84,EUfNCdILFXQiDV","051480029042800280028002080215542":"9|IK-47,GWPNCdv9FX31Wy|gZ-68,-jIK5hQr9v31FX|PN-86,CdIKdy3lGWXs8u","055080020206800280028002800215542":"9|wy88,WyIKFXgiCUo6Ui|YK87,EfILWTwyFag79v|IK38,EfgiftwyWyYqFd","051480020206800280028002800215542":"9|wy100,WyIKGWYaWTKyDb|wi94,6iTWFXYaGUoqCd|TW56,GUwiCaXUDRIKRU","054480020201800280028002800215542":"9|wy105,CaIKGWyWXlgy-s|fN93,GWPMCSv9XT3lEZ|YK85,GWILEUgSWmPMXl","055080228142800080028002800215542":"9|PM31,5y3lCdlTFXvXES|3l19,EcPMCQILUpgS6l|313,DbPMCQIL70n8Qr","055080229042800080028002800215542":"9|PM8,DY31CQILQioTYZ|313,DYPMCQ1R5pILU0|nl-26,FTPM9lvUCUoT5p","051488028142000280028002800215542":"9|IL46,GWoTFTQiDVnV5k|oT12,FTIL-uPd7pXOGi|wy2,Cdn1Db3cGWXl6o","051480028142800280028002080215542":"9|YK2,Cdn1Db3cGWXl6o|31-36,CdYKDbPMFX1dGW|gZ-37,GWyWFXIKDbfbCd","055080028106800280028002080215542":"9|YK3,EfILFXyW-uPMTz|yW-4,DRQiEUiUCSIKFX|IK-60,EUPNCdnl-uoTFT","051480028106800280028002080215542":"9|YK30,DbILGeg7FX7beb|Ya-18,GeIKDbyWeaXT-s|Ia-44,DRgZWyYcGWQr6a","055080228106800080028002800215542":"9|YK-17,Fao6CQ6sEcIM9v|31-42,CQPM-uIL5rwi7p|IL-44,DRXFToPMCQwi9i","015480224102800080028002800215542":"9|oT21,FTwbGWILDRYaEU|wy14,GWyWQiXUDbIabk|Pd5,GW31DRn8FadaEU","055480228102800080029002800214542":"9|wy23,GWyWDR3lTlo6-j|IL17,GWwyDRoTFTyWRW|316,GWYKEUwyWyIjFa","054480029012800280028002080215542":"9|IK11,8uYa5pfN6s31De|PN7,5pIK8uYa6s31De|Ya3,-u31DeIKGNnlNK","115480028402800280029002802014542":"9|wy21,-uPkEZv9GUkSFT|Pd19,-ufNGWwyEZo680|fN17,GWYKEZgi-uo6DL","055408029002800280028012800215442":"9|wi19,GWgy5pn1EU30CQ|gi16,5pwyCQ3lQiYaGb|wy11,5pgiEWn1CUPN7m","115408028402800280029002800214542":"9|n19,5h30-uXFGWPNDM|Pd9,5h31-uXlhlQSEW|PN3,GWn1-uQi5h306s","055480029002800280028402080211542":"9|fN13,-u31GWyWDTILFX|PN13,GWnl-u31CaIKa1|IK-10,qKoq5pqK-uYa8n","054480209012800280028002800215542":"9|IK13,-ugy5pNp8s306o|wy7,5pIK8uYa6s31De|gy-3,-jIK5pwz8u306o","054408029012800280028002800215542":"9|PN13,-ugy5pNp8s306o|wy11,8uYa5pfN6s31De|fN6,5pNpGb31CQvsQU","055480029002800280028012080215442":"9|IK11,5pgiEWn1CUPN7m|gi-9,-jIK5pn16oQCFT|PN-13,5pIK7mYa-jfdFa","115480208402800280028006800215142":"9|gy18,GeQi7r30-mfEm0|31-1,Genl5pwyEZIjBc|fd-3,Bc31EZo65rnlZd","111480228402900080028002800215542":"9|3l18,GWYK7pPL6lXl-s|3117,GWYK7pgi-uo6DL|YK12,8uIMuKwy5hyS-u","055480029002800200028012880215442":"9|308,EWPNGeo65pwzps|IK6,5pn1Fdw0d13l-j|wi-9,-jIK5pn16oQCFT","054488029012000280028002800215542":"9|wy6,5pfN9lIMlNPdGb|PM6,5pwyEWIL8uv9-e|fN-4,7pPLpN31R1IM5y","115480028080800280028006800215142":"9|fN104,EUwUBcPMDRvdRU|PN85,GefEFT31BEv9EU|3171,EUPd-mv9Gewi5p","111480028084800280028002800215542":"9|PN128,Ge31BRn8FTv9DY|YK121,BRPMGewyDTv9FV|v992,BRIKGePN-m31mU","105480029080800280028002800215542":"9|PN210,8uURGev9BcYc-m|fN207,FO3lGePd6ln1BT|31178,R1PNGWfdBRv9FT","054488029102000280028002800215542":"9|PM62,TuwiGeILEWv98s|XT48,CQILQTPMTuwiGe|wy41,DbfNThPLCQvdbd","115480228042800080028006800215142":"9|wU107,EUILDRPMBcvUGe|XU104,EUwUBcPMDRvdRU|PM91,Um31-ewy5pILFX","111480028046800280028002802015542":"9|QU101,BRIKGeo6DTwiFX|PN27,GeQUBR1RFTwb7b|wy-30,BRfd-mIKGePN5p","115480229002800080028002800215542":"9|31105,-uoa8sPM5hXs6s|3l87,GWwiFTPM5ho6-j|PM84,GW3lDTwi8uXFBl","054480029102800280028002080215542":"9|IK60,GWPN7jgj-jYaRh|XT51,GWPNDYv9Ca3lay|PN51,DYXTGWv9Ca3lay","015480029042800280028002802015542":"9|Pd67,EWvUR1nlDMXsGe|fd49,GWPNR1vUFTXlTl|PN49,GWfdR1vUFTXlTl","054408029102800280028002800215542":"9|wy60,GWPN7jgj-jYaRh|PN44,7pNpRp3cGWvs9r|XT32,7pnl-uPNDTNpRp","115480208002800280068002800215542":"9|n179,BR1RDMXUGev9Fa|wy75,5p31BR1RGev96l|3l73,BRfdGeQiFTv9Db","115480208042800280028006800215142":"9|XU85,GefEFT31BEv9EU|wU75,EUYKBRIL9vnlGe|fE71,Um31-eIaBREM5p","015480025002800280028002080215542":"9|g737,5pIK6sn1-uoaGU|IK13,5p31GUYaDVo6V1|o613,5pIKGU319vYa7r","055408029002800280024002800211542":"9|gy36,GUQCFXwiELPM5p|PN13,5pwy-sQCFXYaDT|QC-1,5rgyGWYqWy3lox","105480025002800280028002080215542":"9|IK70,5hg7BZo6-sPd9i|o661,QJPk5Z6s9rg7BT|PN24,-ug75horQrYauT","105480025002800200028002880215542":"9|IK43,GUo6BZYq-svs8q|wz9,-jYa5hIKGC306o|Yq-21,8qwz-jIKGCo65h","015480025002800200028002880215542":"9|wz48,-jo65pIKGUYaFT|o635,GUwz-jYaFX6lXT|IK22,GUo6FXfdXTvUQU","054480028101800280008002802215542":"9|fN29,CQ30XlPMGW1aQr|QT25,GWIjEUv9XTwz5k|PN19,GW30CQfdXl1aEc","115400024002880280029002800214542":"9|wy9,-uPkBZo69iy0Ek|YK0,BZwy9ifN5hXl-s|o6-7,5hwy-ugSGUYKFa","055480029002800288024002000211542":"9|IK12,CUQrEWi98s3lGe|3u12,7pQC5riNGeIL-s|PN1,8uIKCUYaFaQrRs","111400024006880280028002800215542":"9|gy77,5pwz-mYKGUo69r|oT22,GUgy5pwzBRYb-j|YK18,QiwyWy3cFaoaGU","055480209002800280024002800211542":"9|IK13,5pwy-sQCFXYaDT|wy-1,GWIK-uQCDTYaFX|wb-12,8uIKCUnlGeft7t","015480025002800280028002802015542":"9|wy11,5po67rfdGWIK-u|Pd-19,R1wyQifNDTNiGW|IK-21,GWo6EUn8-uYq5p","105480025002800280028002802015542":"9|wy14,GWg7BZIKWyo65h|o610,5hwy-uIK9rYaQT|Pd1,-uwy5hg7QTYbGW","055480029002800280020202800214542":"9|gp160,EWIK-mwbCdYcDb|wi121,6iIKCUYa-6nV8k|IK120,5pn1-uwz9v30vd","051480029080800280028002800215542":"9|PN110,CQ31DYvdGW1RFT|31103,R1PNFOfdOmnVGe|nl67,GWPNCQ31DYo6QU","045480021202800280028002800215542":"9|wy109,Cag7GWyWFXIKEU|fN104,5pvd6o31oTXFRh|XU93,8uPNGeURuTRTCU","045408029102800280028002800215542":"9|XT107,CQwyQToTFTg7GW|oT27,FXQiGWwyXTyWCU|nl-4,6lXTCQv981PdQT","145408028006800280028002800215542":"9|PN86,-mgyBRn1Ge3z5p|wi86,-mQTBRPN5pNpmi|gy66,5pn1BRPNpN3zGe","145408028002800280024002800215542":"9|wy165,5pgiFXQrCUi9BR|gy140,FXwzohYaXsv9BZ|gi136,ELwyoaPk5p31-u","141480028106800288028002000215542":"9|oT9,FTIaBRQrGUgjCd|IK-2,BRoTGeYbFTbeCU|v9-21,GeIKBR3cFao6Rs","051480029042800280228002800015542":"9|PN-30,GWvUCUQi5pXs8u|vU-60,CUPNGWIK5poa8s|Pd-61,-ufc9rXF7po6DY","051480029042800280028002802015542":"9|vU5,CUPdDYfcFTn8GW|1R-6,DTfWGbwbFaPkCd|PN-39,GWXlR1vUCUfdDT","141480028142800280228002800015542":"9|PN44,GWwbCQXFQioTWT|IK16,BRPNGWwbFXv9CQ|fW-17,CQPNQiIKFaYa6a","141480028142800280028002080215542":"9|PN24,GWIKBRnl-uoTFT|Ia3,GWg75pYbBRQi9v|IK3,BRPNGWXlCd3TWy","105480028142800280028002080215542":"9|3150,EWyWBR1RFXPk5k|oT50,FTIa-uQiGbg7Bl|PN40,8uoTFTIa6sQiBR","055480029002000280028802800215142":"9|wy138,5pIK-uoauqQCGU|fN91,5pwy-uIL9voavU|PN80,-uqu5pwy9lvd7r","051480029802800200028002800215542":"9|wi129,FXIKGWQrCUo6XS|XT76,GUPNDYvUCU3l5p|Qi64,GWIKDTwyFafcWy","141480028026800280008002800215542":"9|3l128,GePNFTo6-s6q5p|IK81,BRo6GD3lDVPN-s|QU54,BToTGeIKFTwi5k","055480029002800280028402080215142":"9|Yq138,5pIK-uoauqQCGU|IK130,qt315pfNGWgi-u|QC102,qtPkEWg7-mv95p","051408029402800280028002800215542":"9|wi72,SWgy5pQrCUyWGi|gS64,GWwyCUyWFXPNDV|wy64,GWgSFXyWCUPNDV","045480209012800280028002800215542":"9|wb117,-unVRVv9FTXlGW|Xl89,GWnVCQVRFTv9EU|nV64,GW31FT1RCQIKES","145480020202800280028012800215542":"9|PN71,GWNtWTo6BRv9Fd|wy71,BRv9GWyW5pPdEU|gy46,BRwz9vfNFX3l5p","145480020202800280018002800215542":"9|wy60,BRfNEU31GW1RCd|PN57,GWv97pTWBZ9rn1|IK55,5p316sPNGWTWBR","051480029480800280028002800215542":"9|gS83,5pIK-s31sUvUCU|PN46,8ugSGeIKFT31CQ|IK32,SgPN8u31GeURCQ","051480209402800280028002800215542":"9|IK72,GW3l5pgSFXQi9l|o660,5pgS-uIK9rwy7j|nl37,FT31DYIKGWwiCU","045408029012800280028002800215542":"9|fN63,GW3lCQo6FMwi5k|PN60,GW3l5pnVCQv9-s|nV48,GWo6CQXlRV315k","141408028016800280028002800215542":"9|nV81,BRo6GD3lDVPN-s|3c47,GePNBRwi8ugZ5r|PN46,BRwbGe3lFTo6-s","051488029006000280028002800215542":"9|IL-52,5pwy9voa6s3l-a|wy-52,5pIL9voa6s3l-a|PM-70,5pwy-m31Gev98s","055480029002800200028006880215142":"9|Pk-33,5pwz-m30EWXFGU|wz-52,5pIKFXQiCUPdGi|IK-58,5pwzFXPd-sKlXU","045480229002900080028002800215542":"9|PM-36,GWnl-u316ogi5r|wb-39,EUPMGWnl-uo6Cd|nl-43,5h31FavdGWPMZd","051408029006800280028002800215542":"9|PN-40,5pNp8u31-eXF6s|31-61,GePNCUnl5pwy8s|gi-63,Gev95kwy-m3l8u","055480029002800280028006080215142":"9|fN-42,5pIL6sPMGegi9v|Pk-48,5pXUEWUp-e316s|IK-54,5pYaEWXFCUoTGm","045480209002900280028002800215542":"9|IK-35,GW31-ugy6owior|nl-36,GWIK-uo65r319v|wb-41,GWIK-ugiCUo6FX","145408029002800280029002800214542":"9|PN-46,GWwyBhYa-uv9EU|wy-46,5Zgi-u31GWXF8s|n1-50,GWPNBh306oYa-u","055480028002900280029002080214542":"9|31-20,Fdvs-uo6DR1RGU|YK-31,-s315hIj6lfNFX|IK-42,5h31-uYDFafNCQ","045408029002900280028002800215542":"9|fN-31,-uwb9lPMuKvd5h|PN-35,GW31-ugy6owior|gi-39,GW31CUo6EfPNFX","051480029006800280028002080215542":"9|PN-54,5pIK8ugi-enl7r|yW-57,DToTFTgZ-jneRW|gZ-65,WyIKGWQr6a3l-j","141480029006800280028002080215542":"9|PN-48,BZIKCUgiGev9FT|g7-54,WyIKBZo6GN3lFl|yW-62,BTgi-joTFTne6i","055580028002800200028002880215541":"10|9v-128,30-uXlGWyW59PN|-u-128,30HOwz5-IaGmv9|DR-130,IK5pv98swzGWQi|HO-137,Ia5xwi-mn19vXl","055580028002800280028002080215541":"10|DR-112,PkHO31R1Ij-jnj|-u-131,315-orGePk8knk|9v-135,31HOPkGen86l8q|HO-149,YKGeIM9vKOFNg7","055508028002800280028002800215541":"10|-u-120,gyFXfNGW30Wywi|8u-121,gy9vPk59fNGe30|9v-122,fNHOwy8uPk5931|HO-127,fN-mwy7tNt9v31","055580228002800080028002800215541":"10|8u-90,gy-mPkGe30FXIK|-u-121,PMGW31CQwyQTgi|HO-122,IMGeYK-m3l6iNi|GW-124,ILDR31-uPM70XF","055480229002800080028002800215541":"10|GW50,PM-u317pv96oQC|-u38,wy5p31GWPMDYvd|8u37,PMGenl5p31-mwy|5p26,Np8uPN-mXF6o31","055480209002800280028002800215541":"10|GW53,IK-ugi9iQi5pwy|8u42,nl9rXs6o31GeIK|-u26,31GWnlDTXs6ov9|5p21,Np8uXFGe31R1FT","055408029002800280028002800215541":"10|5p54,wy8uYaEWXFCUoT|GW53,PN5pnl6lXl-u31|8u51,PN5pwy6snlFX31|-u26,wy5pYa8soTFXQC","055480029002800280028002080215541":"10|GW59,PN5pIK8u31CUnl|5p54,IKEWgi8uv96sQr|EU47,IKGWPNCdv9FX31|-u26,IK5pYa8soTFXQC","055480020202800280028002800215541":"10|GW-88,wyWyIKFXgiCUo6|EW-100,wyWyIKGWYaWTKy|FX-105,wyCaIKGWyWXlgy|DR-109,wyCag7GWyWFXIK","055488028102000280028002800215541":"10|GW-8,ILEfwyFXPMXlvU|GU-31,IL-1wiFaiUCQoQ|EW-34,ILGU3cFXPM8coT|EU-46,ILGWoTFTQiDVnV","055480028102800280028002080215541":"10|EU-2,YKCdn1Db3cGWXl|GW-3,YKEfILFXyW-uPM|EW-30,YKDbILGeg7FX7b|CU-39,YKDbILGWvUFXPM","115480028402800280028002802015541":"10|GW-11,PN7pfd-uYK9rwy|-u-19,Pd5pfNGWYK7rIL|5p-19,PNGWfd-uYK7rIL|7p-21,wy-uPkEZv9GUkS","055480228102800080028002800215541":"10|GW17,YKFao6CQ6sEcIM|CQ-21,oTFTwbGWILDRYa|7p-23,wyGWyWDR3lTlo6|TW-51,YK-m316iwyWyIM","115408028402800280028002800215541":"10|7p-9,n15h30-uXFGWPN|5p-13,n1GWPN-uKu7rwz|GW-13,PN5pn1-uKu7rwz|8u-20,wy5pySBRfNGegL","115480208402800280028002800215541":"10|-u-11,31GWfd7pYK9rwy|GW-13,IK5pn1-uKu7rwz|8u-18,gyGeQi7r30-mfE|DR-31,IKEZ31GWwiBhn8","115480228402800080028002800215541":"10|GW-6,31-uYK6iPLiKIa|-u-8,IL7pwy5hXFGWPM|EZ-18,3lGWYK7pPL6lXl|BR-22,ILGW31-uPMDYvd","115480028080800280028002800215541":"10|8u-104,fNEUwUBcPMDRvd|EW-128,PNGe31BRn8FTv9|GW-180,31Fdn8BR1RDTv9|DR-210,PN8uURGev9BcYc","115480228042800080028002800215541":"10|GW-62,ILUp3lBZPMDRo6|UR-105,31-uoa8sPM5hXs|Um-105,315pPMpNv9GeXF|8u-107,wUEUILDRPMBcvU","115480208042800280028002800215541":"10|GW-60,31BRIK8knk5kfd|Um-79,n1BR1RDMXUGev9|8u-85,XUGefEFT31BEv9|BR-91,wU8ufEGeIKDTYa","115480028042800280028002802015541":"10|GW-60,PNBRIK8knk5kfd|BR-67,PdEWvUR1nlDMXs|EW-101,QUBRIKGeo6DTwi|Um-109,fNGePMBKYaDRn8","115480024002800280028002080215541":"10|5p-36,YK-so69vIa8z30|BR-37,g75pIK6sn1-uoa|DR-70,IK5hg7BZo6-sPd|9v-75,g75pIa-u7t6sas","115480024002800200028002880215541":"10|GU-29,YKFXwzQiILBRyd|DR-43,IKGUo6BZYq-svs|BR-48,wz-jo65pIKGUYa|5p-50,IKBRwz-so69v6i","115480024002800280028002802015541":"10|BR-11,wy5po67rfdGWIK|5p-13,wyBRIKGUo69vgi|DR-14,wyGWg7BZIKWyo6|-u-26,gy5pwz8sYaBRIK","115400024002880280028002800215541":"10|7p-9,wy-uPkBZo69iy0|5p-12,wy6soT8uaFEUPd|BR-58,wy5po6-u6sGUsR|EW-77,gy5pwz-mYKGUo6","145480020202800280028002800215541":"10|BR-109,wyCag7GWyWFXIK|GW-110,IKFXwyEfoaBRyW|FX-125,wyBRg7EUIKCdo6|5p-160,YR8uwyGeIj6lgk","145408028102800280028002800215541":"10|TW-86,PN-mgyBRn1Ge3z|BR-107,XTCQwyQToTFTg7|To-165,wy5pgiFXQrCUi9|GU-167,3TBRPN5pvUCUYa","145480028102800288028002000215541":"10|GW30,IKBRoTFTXl-uQr|EW-9,oTFTIaBRQrGUgj|GU-38,IKBRiU8uoTFTKM|EU-44,IKBR3cFXQCXlvU","145480028102800280028002080215541":"10|GW-5,oTFTIaEfYbCUg7|EU-24,PNGWIKBRnl-uoT|CU-50,31EWyWBR1RFXPk|EW-67,oTBRYa-aIKWygi","145480028022800280008002800215541":"10|EW-128,3lGePNFTo6-s6q|GW-129,3lCQPNBRXsFTv9|7p-129,31GWPN-uv9FTfd|-u-138,PNGW31BRXlRVv9","145480208012800280028002800215541":"10|GW-72,3lVRn1-uXsFT1R|BT-109,wbGWnVCQXlFaIK|BR-117,wb-unVRVv9FTXl|-u-138,nVGW31BRXlRVv9","145480020212800280028002800215541":"10|Vn-60,wyBRfNEU31GW1R|Vt-71,PNGWNtWTo6BRv9|-u-75,nVGWwyWyYaCUoM|GW-83,nV-uPN5rwyrToT","145480229002800080028002800215541":"10|GW52,PM-u316ovd9rwi|BZ36,PMGWnl-u316ogi|-u33,wbGWPMBZIL7po6|5h29,31-uwbGWvdBTPM","145408028012800280028002800215541":"10|BR-63,fNGW3lCQo6FMwi|GW-72,PNBRwi-unVCQXl|EW-81,nVBRo6GD3lDVPN|-u-85,nVGWPN7pwyBZo6","145480209002800280028002800215541":"10|-u42,gyGW30FTwz5hfd|GW40,IK-uKu7pwy5ZQC|BZ35,IKGW31-ugy6owi|5h16,IKGWgy8uKuWuwz","145408029002800280028002800215541":"10|7p46,PNGWwyBhYa-uv9|BZ31,fN-uwb9lPMuKvd|5h20,PN9lXUGWQC7pNp|GW13,giEL3cBZPM6oQC","145480029002800280028002802015541":"10|GW54,IK-uPN7pnl5Zgi|-u51,wyGWPNFTYa6oIK|EW48,IKGePNFTnlBZo6|BZ43,IKGUPNCdo6FXn8","055480029002800280028002800215542":"11|fN-50,GWPM-u317pv96o|PN-53,GWIK-ugi9iQi5p|IK-54,5pwy8uYaEWXFCU|wy-59,GWPN5pIK8u31CU|gy-71,5pIKEWn1FdPNdy","055580028002800280028002800215542":"11|gy128,9v30-uXlGWyW59|IK120,-ugyFXfNGW30Wy|wy112,DRPkHO31R1Ij-j|YK93,8uwyGePk9vfN59|fN90,8ugy-mPkGe30FX","115480028402800280028002800215542":"11|3111,GWPN7pfd-uYK9r|PN11,-u31GWfd7pYK9r|IK9,7pn15h30-uXFGW|fN6,GW31-uYK6iPLiK|n16,GWPNDR306owiBZ","055480028102800280028002800215542":"11|QT88,GWwyWyIKFXgiCU|YK8,GWILEfwyFXPMXl|wy2,EUYKCdn1Db3cGW|fN-17,GWYKFao6CQ6sEc|IK-38,EWPN8uXFGmQTCd","115480028042800280028002800215542":"11|XU104,8ufNEUwUBcPMDR|fN62,GWILUp3lBZPMDR|3160,GWPNBRIK8knk5k|PN60,GW31BRIK8knk5k|YK-5,BRfN8uPL5p31-m","115480024002800280028002800215542":"11|wy36,5pYK-so69vIa8z|gy29,GUYKFXwzQiILBR|3111,BRwy5po67rfdGW|Ia9,7pwy-uPkBZo69i|IK3,7pwy5hPdFdvd-1","145480028102800280028002800215542":"11|QT109,BRwyCag7GWyWFX|IK86,TWPN-mgyBRn1Ge|wy5,GWoTFTIaEfYbCU|oT-12,BRwiFTXTEUIKCd|wi-30,GWIKBRoTFTXl-u","145480028012800280028002800215542":"11|nV128,EW3lGePNFTo6-s|PN72,GW3lVRn1-uXsFT|IK63,BRfNGW3lCQo6FM|QT60,VnwyBRfNEU31GW|fN39,GWnV5k31EcPMBT","145480029002800280028002800215542":"11|PN-42,-ugyGW30FTwz5h|IK-46,7pPNGWwyBhYa-u|fN-52,GWPM-u316ovd9r|31-54,GWIK-uPN7pnl5Z|n1-59,GWPNBTIK6oYaoq","155480028002800280028002800215541":"12|BR50,fNGWPM-u317pv9|DR42,PN-ugyGW30FTwz|CS-11,31GWPN7pfd-uYK|CQ-36,wy5pYK-so69vIa|BT-88,QTGWwyWyIKFXgi|CU-104,XU8ufNEUwUBcPM|DT-109,QTBRwyCag7GWyW|BH-128,gy9v30-uXlGWyW|DV-128,nVEW3lGePNFTo6"}};
 </script>
 <script>
@@ -1590,50 +1404,6 @@ class Analyzer {
 }
 const analyzer = new Analyzer();
 document.addEventListener("visibilitychange", () => { if (document.hidden) analyzer.pause(); else analyzer.resume(); });
-
-/* ===================== Turk talks ===================== */
-const STUDY_TALK = {
-  gradeBest: ["흠, 그게 최선 맞아. 우연이겠지.", "정답. 내가 가르쳐준 거나 마찬가지지.", "오, 최선수. 오늘 운 좋네.", "맞아. 그 수 말고는 없었어."],
-  gradeGood: ["나쁘지 않아. 최선은 아니지만.", "괜찮은 수야. 내 1순위는 {best}였지만.", "그 정도면 쓸 만해."],
-  gradeOk: ["무난하네. 무난하게 지는 중이야.", "그럭저럭. {best}가 더 좋았어.", "나쁘진 않은데, 좋지도 않아."],
-  gradeDubious: ["음, 그 수는 좀 애매한데.", "부정확해. 승률 {d}%p 날아갔어.", "{best} 두면 됐는데."],
-  gradeMistake: ["실수야. 승률 {d}%p 손해.", "그거 말고 {best}였어.", "아깝다. 아니, 나는 안 아까워."],
-  gradeBlunder: ["그 수 진심이야? 승률 {d}%p 날아갔어.", "고마워. 방금 그거 선물 맞지?", "{best} 두면 됐는데. 이제 늦었어.", "손이 미끄러진 거지? 그렇다고 해줄게."],
-  gradeMissWin: ["이길 수 있었는데 놓쳤어. {best}였어.", "방금 강제 연결이 있었어. {best}. 못 봤지?"],
-  hintOn: ["추천 수 보여줄게. 이걸 봐도 지겠지만.", "내 1순위는 이거야. 따라 하면 좀 버틸걸.", "커닝 허락. 오늘만."],
-  anaStart: ["분석 모드. 양쪽 다 네가 둬. 옆에서 훈수 둘게.", "여기선 안 이겨도 돼. 대신 이유를 봐."],
-  reviewStart: ["복기 시작. 네 실수들 하나씩 보자.", "어디서부터 꼬였는지 보자. 힌트: 초반."],
-  pzStart: ["{side} 차례. {n}수 안에 이어봐. 나는 막을 거야.", "{n}수 안에 끝나는 판이야. 찾아봐.", "정답은 딱 하나야. {n}수 안에."],
-  pzSolved: ["...풀었네. 쉬운 문제였어.", "정답. 다음 건 이렇게 안 쉬워.", "인정. 근데 실전에선 내가 이런 기회 안 줘.", "풀었다고 우쭐하지 마. 내가 낸 문제야."],
-  pzFail: ["땡. 다시 해봐.", "그 수로는 안 돼. 내가 막았잖아.", "{n}수 안에 못 이었어. 힌트 써도 돼. 조금 부끄럽지만."],
-  pzHint: ["힌트: 점선 테두리 친 말을 움직여.", "이 말이야. 어디로 갈지는 네가 찾아.", "이 말. 더는 안 알려줘."],
-  pzHint2: ["여기까지 알려주면 거의 답이지. 화살표대로 둬.", "이건 거의 정답 공개야."],
-  pzAllDone: ["이 단계 다 풀었네. 다음 단계 가봐. 거기선 안 봐줘."],
-  noteUnlock: ["들켰네. 이건 내 비밀노트야. 초반을 미리 깊게 읽어뒀어.", "어떻게 알았어? 좋아, 초반 노트 보여줄게. 남한텐 비밀이야.",
-               "비밀노트 찾았네. 이걸로 친구들은 이길 수 있을 거야. 나는 말고."],
-  noteLock: ["비밀노트 다시 숨겼어. 못 본 걸로 할게.", "노트 잠갔어. 열 줄 아는 사람만 열어."],
-  noteStart: ["초반은 여기 적힌 대로만 둬도 반은 먹고 들어가.", "내가 미리 읽어둔 초반이야. 외우지 말고 이유를 봐.",
-              "노트에 있는 동안은 기다릴 필요 없어. 답이 바로 나와."],
-  noteOff: ["노트는 여기까지야. 여기부턴 분석판에서 직접 읽혀봐.", "이 국면은 노트에 없어. 좋은 수 위주로만 적어놨거든.",
-            "여긴 나도 미리 안 읽어놨어. 분석판으로 넘겨."],
-};
-Object.assign(TALK, STUDY_TALK);
-let recent = [];
-function say(key, vars) {
-  const all = TALK[key]; if (!all) return;
-  const fresh = all.filter((x) => !recent.includes(x));
-  const pool = fresh.length ? fresh : all;
-  const line = pool[Math.floor(Math.random() * pool.length)];
-  recent = [line].concat(recent).slice(0, 4);
-  document.getElementById("say-text").textContent = line.replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] !== undefined ? vars[k] : ""));
-  const b = document.getElementById("bubble");
-  b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
-}
-const CHAT = Object.keys(TALK).filter((k) => k.startsWith("chat"));
-function chat() {
-  let r = Math.random() * CHAT.reduce((a, k) => a + TALK[k].length, 0);
-  for (const k of CHAT) { r -= TALK[k].length; if (r < 0) { say(k); return; } }
-}
 
 /* ===================== grades and explanations ===================== */
 const GRADES = [
@@ -1800,25 +1570,24 @@ const depthText = (info) => info ? `${info.depth}수 앞까지 읽음${info.done
 /* ===================== mode: game ===================== */
 const game = {
   started: false, human: 1, moves: [], grades: {}, anaByPly: {}, engByPly: {}, showHints: false, sel: -1, token: 0,
-  st: null, chatTimer: 0, prevP: null,
+  st: null, prevP: null,
   enter() { this.render(); if (this.started) this.next(); },
-  leave() { stopAnalysis(); clearTimeout(this.chatTimer); playBrain.kill(); this.token++; },
+  leave() { stopAnalysis(); playBrain.kill(); this.token++; },
   start(side) {
     playBrain.kill(); stopAnalysis(); this.token++;
     Object.assign(this, { started: true, human: side, moves: [], grades: {}, anaByPly: {}, engByPly: {}, sel: -1, prevP: null, lastGrade: null, finished: -1 });
-    say(side === 1 ? "startHumanBlack" : "startEngineBlack");
     this.next();
   },
   reset() {
-    playBrain.kill(); stopAnalysis(); this.token++; clearTimeout(this.chatTimer);
+    playBrain.kill(); stopAnalysis(); this.token++;
     Object.assign(this, { started: false, moves: [], grades: {}, anaByPly: {}, engByPly: {}, sel: -1, lastGrade: null, finished: -1 });
-    say("pick"); this.render();
+    this.render();
   },
   next() {
     this.st = replay(null, this.moves);
     const st = this.st, tok = this.token;
     if (st.over) { this.finish(); this.render(); return; }
-    if (!st.legal.length) { this.moves.push(PASS); say(st.stm === this.human ? "humanPass" : "enginePass"); this.next(); return; }
+    if (!st.legal.length) { this.moves.push(PASS); this.next(); return; }
     if (st.stm !== this.human) {
       stopAnalysis();
       const ply = this.moves.length;
@@ -1830,14 +1599,11 @@ const game = {
         const pe = winProb(info.score); setEval(this.human === 1 ? 1 - pe : pe);
         this.moves.push(m);
         this.tryGrade(ply - 1);
-        this.engineTalk(m, info);
         this.next();
         this.render(m);
       });
     } else {
       const ply = this.moves.length;
-      clearTimeout(this.chatTimer);
-      this.chatTimer = setTimeout(() => { if (tok === this.token && this.moves.length === ply) chat(); }, 20000);
       analyze(null, this.moves, (info) => {
         if (tok !== this.token || this.moves.length !== ply) return;
         this.anaByPly[ply] = info;
@@ -1867,29 +1633,14 @@ const game = {
     if (missedWin && GRADES.indexOf(g) < 4) g = GRADES[4];
     if (best.move === m || played >= best.score) g = GRADES[0];
     this.grades[ply] = { key: g.key, name: g.name, loss, best: best.move, played, bestScore: best.score, missedWin };
-    if (ply === this.lastMinePly()) {
-      this.lastGrade = ply;
-      const vars = { d: loss, best: mvText(best.move) };
-      if (missedWin) say("gradeMissWin", vars);
-      else say("grade" + g.key[0].toUpperCase() + g.key.slice(1), vars);
-    }
+    if (ply === this.lastMinePly()) this.lastGrade = ply;
     this.render();
   },
   lastMinePly() { for (let i = this.moves.length - 1; i >= 0; i--) if (replay(null, this.moves.slice(0, i)).stm === this.human && this.moves[i] !== PASS) return i; return -1; },
-  engineTalk(m, info) {
-    const st = replay(null, this.moves);
-    if (st.over) return;
-    if (m & 4096) say("engineCap");
-    else if (info.score >= MATE) say("mate", { n: Math.max(1, Math.ceil((WIN - info.score) / 2) - 1) });
-  },
   finish() {
-    const st = this.st;
     if (this.finished === this.moves.length) return;
     this.finished = this.moves.length;
-    clearTimeout(this.chatTimer); stopAnalysis();
-    if (!st.winner) say("draw");
-    else if (st.winner === this.human) say("humanWin");
-    else say("engineWin", { n: Math.ceil(this.moves.length / 2), g: R._label(this.human) });
+    stopAnalysis();
   },
   onSquare(s) {
     const st = this.st;
@@ -1898,7 +1649,6 @@ const game = {
       const m = st.legal.find((x) => (x & 63) === this.sel && ((x >> 6) & 63) === s);
       if (m !== undefined) {
         this.sel = -1; this.moves.push(m);
-        if (m & 4096) say("humanCap");
         this.tryGrade(this.moves.length - 1);
         this.next(); this.render(m); return;
       }
@@ -1986,8 +1736,7 @@ const game = {
 const ana = {
   moves: [], cur: 0, grades: {}, human: 0, sel: -1, info: null, key: "",
   enter(fromGame) {
-    if (fromGame) { this.moves = game.moves.slice(); this.cur = this.moves.length; this.grades = Object.assign({}, game.grades); this.human = game.human; say("reviewStart"); }
-    else say("anaStart");
+    if (fromGame) { this.moves = game.moves.slice(); this.cur = this.moves.length; this.grades = Object.assign({}, game.grades); this.human = game.human; }
     this.go();
   },
   leave() { stopAnalysis(); },
@@ -2057,7 +1806,6 @@ const pz = {
     this.lvl = lvl; this.idx = idx; this.moves = []; this.status = "play"; this.sel = -1; this.hint = 0; this.busy = false; this.hintMove = -1;
     const p = this.cur();
     this.base = { arr: p.b.split("").map(Number), side: p.side };
-    say("pzStart", { n: p.n, side: sideName(p.side) });
     this.render();
   },
   st() { return replay(this.base, this.moves); },
@@ -2097,19 +1845,18 @@ const pz = {
     this.status = ok ? "solved" : "failed";
     if (ok) {
       this.solved.add(p.id); store.set("turk-study-solved", Array.from(this.solved));
-      if (this.list().every((q) => this.solved.has(q.id))) say("pzAllDone"); else say("pzSolved");
-    } else say("pzFail", { n: p.n });
+    }
   },
   doHint() {
     const p = this.cur(), st = this.st();
     if (this.status !== "play" || st.stm !== p.side || this.busy) return;
     this.hint = Math.min(2, this.hint + 1);
-    if (this.moves.length === 0) { this.hintMove = p.sol[0]; say(this.hint === 1 ? "pzHint" : "pzHint2"); this.render(); return; }
+    if (this.moves.length === 0) { this.hintMove = p.sol[0]; this.render(); return; }
     // later steps: ask Turk for the attacking move
-    const tok = this.token; const h = this.hint;
+    const tok = this.token;
     playBrain.run({ base: this.base, moves: this.moves.slice(), time: 600 }, (info) => {
       if (tok !== this.token) return;
-      this.hintMove = info.move; say(h === 1 ? "pzHint" : "pzHint2"); this.render();
+      this.hintMove = info.move; this.render();
     });
   },
   drawBoard(anim) {
@@ -2128,7 +1875,8 @@ const pz = {
       `<button type="button" class="${this.solved.has(q.id) ? "done" : ""}${i === this.idx ? " cur" : ""}" data-i="${i}" aria-label="${i + 1}번 문제">${i + 1}</button>`).join("");
     document.getElementById("pz-prompt").innerHTML = `<span class="chip ${p.side === 1 ? "b" : "w"}"></span>${sideName(p.side)} 차례 · ${p.n}수 안에 전부 이어`;
     const left = p.n - this.userMoves();
-    document.getElementById("pz-sub").textContent = this.status === "play" ? (this.busy ? "튀르크가 막는 중…" : `남은 수 ${left} · 문제 ${this.idx + 1}번`) : "";
+    document.getElementById("pz-sub").textContent = this.status === "play" ? (this.busy ? "튀르크가 막는 중…" : `남은 수 ${left} · 문제 ${this.idx + 1}번`
+      + (this.hint >= 2 && this.hintMove >= 0 ? " · 힌트: 화살표대로 둬." : this.hint === 1 && this.hintMove >= 0 ? " · 힌트: 점선 테두리 친 말을 움직여." : "")) : "";
     const ban = document.getElementById("pz-banner");
     ban.hidden = this.status === "play";
     if (this.status === "solved") { ban.className = "banner ok"; ban.textContent = `성공. 정답 첫 수: ${mvText(p.sol[0])}`; }
@@ -2139,7 +1887,7 @@ const pz = {
   },
 };
 
-/* ===================== mode: secret note (precomputed opening analysis) ===================== */
+/* ===================== mode: opening note (precomputed opening analysis) ===================== */
 // Positions are stored once per symmetry class of the start (mirror files, mirror ranks, 180° turn),
 // keyed by 2 bits per square in hex + side to move; moves are two base64 characters (from, to).
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -2177,14 +1925,13 @@ function noteLookup(b, stm) {
 }
 const note = {
   moves: [], cur: 0, sel: -1, st: null, info: null,
-  enter() { say("noteStart"); this.go(); },
+  enter() { this.go(); },
   leave() {},
   go(anim) {
     this.sel = -1;
     const st = replay(null, this.moves.slice(0, this.cur));
     this.st = st;
     const info = st.over ? null : noteLookup(st.b, st.stm);
-    if (!info && this.info && !st.over) say("noteOff"); // just walked off the note
     this.info = info;
     this.render(anim);
   },
@@ -2260,7 +2007,7 @@ document.getElementById("g-pick-1").onclick = () => game.start(1);
 document.getElementById("g-pick-2").onclick = () => game.start(2);
 document.getElementById("g-new").onclick = () => game.reset();
 document.getElementById("g-undo").onclick = () => game.undo();
-document.getElementById("g-hint").onclick = () => { game.showHints = !game.showHints; if (game.showHints) say("hintOn"); game.render(); };
+document.getElementById("g-hint").onclick = () => { game.showHints = !game.showHints; game.render(); };
 document.getElementById("g-review").onclick = () => switchMode("ana", true);
 for (const b of document.getElementById("seg-level").querySelectorAll("button")) b.onclick = () => { level = b.dataset.v; store.set("turk-study-level", level); syncLevel(); current().render(); };
 function syncLevel() { for (const b of document.getElementById("seg-level").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === level)); }
@@ -2284,7 +2031,7 @@ document.getElementById("pz-next").onclick = () => {
   if (i < 0) i = (pz.idx + 1) % list.length;
   pz.load(pz.lvl, i);
 };
-// secret note controls
+// opening note controls
 document.getElementById("n-lines").addEventListener("click", (e) => { const l = e.target.closest(".line"); if (l) note.play(+l.dataset.move); });
 document.getElementById("n-more").addEventListener("click", (e) => { const b = e.target.closest(".alt"); if (b) note.play(+b.dataset.move); });
 document.getElementById("n-moves").addEventListener("click", (e) => { const b = e.target.closest("button.mv"); if (b) { note.cur = +b.dataset.ply; note.go(); } });
@@ -2296,26 +2043,8 @@ document.getElementById("n-to-ana").onclick = () => {
   ana.moves = note.moves.slice(0, note.cur); ana.cur = ana.moves.length; ana.grades = {};
   switchMode("ana");
 };
-// easter egg: tap the title five times quickly to show (or hide again) the secret note tab
-let noteOn = !!store.get("turk-study-note", false);
-function syncNoteTab() { document.getElementById("tab-note").hidden = !noteOn; }
-{
-  let taps = 0, lastTap = 0;
-  document.querySelector("h1").addEventListener("click", () => {
-    const now = Date.now();
-    taps = now - lastTap < 700 ? taps + 1 : 1;
-    lastTap = now;
-    if (taps < 5) return;
-    taps = 0;
-    noteOn = !noteOn; store.set("turk-study-note", noteOn); syncNoteTab();
-    if (noteOn) { switchMode("note"); say("noteUnlock"); }
-    else { if (mode === "note") switchMode("game"); say("noteLock"); }
-  });
-}
-syncNoteTab();
 game.drawBoard = game.drawBoard.bind(game);
 syncLevel();
-say("pick");
 game.render();
 </script>
 </body>
